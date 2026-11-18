@@ -1,0 +1,23 @@
+{
+  "mass": 0.43,
+  "radius": 0.11,
+  "gravity": 9.81,
+  "airDensity": 1.2,
+  "cdHigh": 0.47,
+  "cdLow": 0.25,
+  "crisisStart": 9,
+  "crisisEnd": 14,
+  "clGain": 0.8,
+  "clMax": 0.33,
+  "spinDecay": 0.1,
+  "restitution": 0.62,
+  "friction": 0.5,
+  "inertiaFactor": 0.667,
+  "rollingResistance": 0.25,
+  "knuckleAccel": 6.0,
+  "knuckleSpeedMin": 10,
+  "knuckleSpeedFull": 16,
+  "postRestitution": 0.55,
+  "netRestitution": 0.1,
+  "netDrag": 2.5
+}

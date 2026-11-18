@@ -1,0 +1,4 @@
+[
+  { "name": "Taker 10", "foot": "R", "accuracy": 0.85, "curve": 0.9, "power": 1.0 },
+  { "name": "Taker 7", "foot": "L", "accuracy": 0.75, "curve": 1.0, "power": 0.95 }
+]
