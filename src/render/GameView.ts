@@ -6,6 +6,7 @@ import { KickerView } from './Figures';
 import { createGoal } from './Goal';
 import { createPitch } from './Pitch';
 import { createStadium } from './Stadium';
+import { WallView } from './WallView';
 
 function ballTexture(): THREE.CanvasTexture {
   const c = document.createElement('canvas');
@@ -42,6 +43,7 @@ export class GameView {
   private ball: THREE.Mesh;
   private ballShadow: THREE.Mesh;
   private kicker = new KickerView();
+  private wall = new WallView();
   private aim = new AimViz();
   private goal = createGoal();
   private tmp = new THREE.Vector3();
@@ -79,6 +81,7 @@ export class GameView {
     this.scene.add(createStadium());
     this.scene.add(this.goal.group);
     this.scene.add(this.kicker.group);
+    this.scene.add(this.wall.group);
     this.scene.add(this.aim.group);
 
     this.ball = new THREE.Mesh(
@@ -139,6 +142,7 @@ export class GameView {
       this.goal.ripple(this.tmp.clone().setZ(-0.3), 14);
     }
     this.kicker.update(s);
+    this.wall.update(s);
     this.rig.update(s, this.tmp, dt);
     this.aim.update(s, this.rig.camera.position);
     this.goal.update(dt);

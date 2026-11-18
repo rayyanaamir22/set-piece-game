@@ -6,23 +6,86 @@ A shooting-only free-kick game whose mechanics match EA FIFA / FC free kicks (FC
 2. **Phase B: native.** An improved desktop build in C/C++ with OpenGL, ported from the Phase A simulation once the mechanics are settled.
 
 ## Status (Phase A)
-| Milestone | State |
+| Step | State |
 |---|---|
 | 0 Fresh start (Vite + TS + Vitest + ESLint boundary rule) | done |
 | 1 Scene: pitch, markings, goal + net, stands, ad boards, set-piece camera | done |
-| 2 Ball physics: RK4, drag crisis, Magnus, knuckle wobble, bounce/roll, post/bar/net | done (27 unit tests) |
+| 2 Ball physics: RK4, drag crisis, Magnus, knuckle wobble, bounce/roll, post/bar/net | done |
 | 3 Shot input: reticle + arrow, contact widget, power meter with sweet spot, driven/low | done |
 | 4 Outcomes: goal / wide / over / short, woodwork flag, result toast, auto next spot | done |
-| 5 Wall | next |
-| 6 Goalkeeper | todo |
-| 7 Taker: run-up adjustment (placeholder figure + strike animation exist) | partial |
-| 8-10 Presentation, modes, freeze sim | todo |
+| 4b Menu: Controls and Settings sheets behind top-right icons, pausing the game, settings saved to localStorage | done |
+| 5 Wall: auto/explicit player count, placement covering the near post, capsule collisions, tunable height, "blocked" result | done |
+| 5b-13 | see "Remaining Phase A steps" below |
 
 ### Decisions made while building
 - **Fixed step is 240 Hz, not 120 Hz.** At 34 m/s the ball moves 0.14 m per step, which is under the post radius, so it can't tunnel through a post.
-- **The reticle is where the ball arrives.** A shooting-method solver (`ShotModel.computeShot`) picks the launch angles so the spinning, dragged ball reaches the reticle. The contact point therefore decides the *shape* of the path (curl round a wall, dip under the bar) and the arrow shows the initial direction, which diverges from the reticle when there's curl. Timing and taker accuracy add error on top.
+- **The reticle is where the ball arrives.** A shooting-method solver (`ShotModel.computeShot`) picks the launch angles so the spinning, dragged ball reaches the reticle. The contact point therefore decides the *shape* of the path (curl round a wall, dip over it) and the arrow shows the initial direction, which diverges from the reticle when there's curl. Timing and taker accuracy add error on top. The solver ignores the wall, so the player has to choose a path that clears it.
 - **Contact point follows the physics.** Striking the right of the ball curls it left, striking the top dips it, and a dead-centre strike at high power is a knuckleball (low spin plus a seeded lateral wobble).
+- **The wall covers the near post**, like a real one: its near edge sits on the ball→near-post line and it extends towards the centre of goal. Shots to the far corner go round it; central and near-side shots need to go over it. Measured at 25 m: a flat shot is about 1.6-1.9 m high at the wall (blocked by the default 1.85 m wall), a dipping shot about 2.3 m (clears all wall heights).
+- **Settings live in `SimState.settings` (`src/sim/settings.ts`)**, so the native build can load the same values. Anything not simulated yet is shown greyed out with a "soon" badge, so the final settings screen is already in place.
 - **Controls:** keyboard + gamepad are in. Mouse aim is not yet.
+
+### Settings reference
+| Setting | Range | State |
+|---|---|---|
+| Distance to goal / angle / place ball / random spot / taker foot | 17-40 m, ±60° | active |
+| Wall on/off | bool | active |
+| Wall height | 1.60-2.10 m, default 1.85 | active |
+| Players in wall | 0 (auto) to 6 | active |
+| Taker accuracy / curve / power | 0-1 / 0-1.5 / 0.7-1.2 | active |
+| Show predicted path | bool | active |
+| Wall jumps on the strike | bool | soon (step 5b) |
+| Goalkeeper present | bool | soon (step 6) |
+| Wind on/off, speed (0-15 m/s), direction (0-360°) | bool + sliders | soon (step 7) |
+
+### Remaining Phase A steps
+Each step lists what to build, the setting that controls it, and how it is tested.
+
+5b. **Wall jump** (`wallJumps`)
+   - Players jump a short, randomised delay after the strike. The delay and jump height come from a new `data/ai.json`.
+   - While airborne their capsules rise (about 0.3-0.5 m), so a flat shot that clears a standing wall can hit a jumping one, and low shots that would have been blocked can pass underneath.
+   - Test: a shot with a fixed timing is blocked with jumping on and clears with it off.
+5c. **Wall extras**
+   - A "lying man" behind the wall that blocks low shots.
+   - Occasional early charge-off (encroachment) that gives a retake.
+   - Both get their own toggles in settings.
+6. **Goalkeeper** (`keeperPresent`)
+   - Positioning: covers the far side, about one step off centre, adjusting to the ball spot.
+   - Reaction delay, then a prediction of where the ball crosses the goal line, driven by keeper stats.
+   - Dive selection: step-across, full dive, tip over, parry or hold, each with a reach envelope so top corners and dip can beat him.
+   - Rare early-guess behaviour.
+   - Placeholder figure with dive animation.
+   - New results: saved, parried, held. Add keeper skill to settings.
+   - Tests: a central shot at mid-height is saved, a top-corner dip scores, determinism with the seeded rng.
+7. **Wind** (`windEnabled`, `windSpeed`, `windDirection`)
+   - Add wind to `BallPhysics.acceleration` (drag acts on velocity relative to the air). It is the only change needed in the sim, and the native port gets it for free.
+   - HUD wind indicator (arrow and speed).
+   - Design decision to confirm: the aim solver ignores wind, so the player has to allow for it (it makes the ball miss the reticle). The alternative is to include it so the reticle stays truthful.
+   - Tests: a crosswind pushes the ball the right way and the deflection grows with speed.
+8. **Run-up adjustment**
+   - Move the taker's start point along an arc around the ball.
+   - A straighter approach gives more power and less curl, a wider one more curl, feeding into `ShotModel`.
+   - The render layer already has the run-up animation.
+9. **Mouse aiming**
+   - Drag or pointer-lock to move the reticle and contact point.
+   - Sensitivity slider in settings.
+10. **Presentation**
+    - Vanishing spray line for the ball spot and the 9.15 m wall line.
+    - Goal replay from 2-3 cameras (ring buffer of sim snapshots).
+    - Audio: crowd, strike, post, net and whistle sounds with a volume slider.
+    - Better crowd texture and some stadium lighting.
+    - Graphics quality setting (shadows, pixel ratio).
+11. **Modes**
+    - Practice arena (ball placement already exists in settings).
+    - Skill challenges with target rings and bronze/silver/gold scoring.
+    - Taker roster picker.
+    - Dummy run-up.
+12. **Settings and UI polish**
+    - Difficulty presets (accuracy, keeper skill, wall).
+    - Key remapping.
+    - Camera distance slider.
+    - Touch/mobile layout for the menu.
+13. **Freeze the simulation:** record golden trajectories and outcomes for a fixed set of shots, then write down the `Sim` state and input structs as the porting contract for Phase B. Includes wall and keeper shots.
 
 ## 1. Tech choice
 **Phase A: Three.js + TypeScript, bundled with Vite (no Next.js, no React).** The game has one ball, about 6 to 8 low-poly figures and a static stadium. That workload is small for WebGL. The hard part is ball physics and game feel, and the web gives the fastest loop for tuning those: hot reload, a debug panel, and a link anyone can play. A plain Vite app keeps the page to one canvas with a lightweight DOM overlay for the on-screen display. A framework only becomes worth it if the menus get complex.
@@ -139,7 +202,9 @@ src/
     BallPhysics.ts          integrator, drag (+ drag crisis), Magnus, knuckle wobble
     Collisions.ts           ground, posts/bar, net, capsules (wall, keeper)
     ShotModel.ts            (aim, contact point, power, timing, stats, modifiers) → v₀, ω₀
-    WallAI.ts, KeeperAI.ts
+    settings.ts             SimSettings: wall, keeper, wind… + legal ranges
+    Wall.ts                 wall layout + (later) jump AI
+    KeeperAI.ts
     FreeKickState.ts        Setup → Aim → Charge → RunUp → Flight → Result → Reset
     Sim.ts                  world state + step(input, dt) + event queue (goal, save, post…)
   render/                   Three.js only reads Sim state
@@ -147,10 +212,10 @@ src/
     CameraRig.ts            set-piece, follow-ball, replay cams
     AimViz.ts               reticle, arrow, spray lines
   input/Input.ts            keyboard, mouse, Gamepad API → abstract action struct
-  hud/                      plain DOM/CSS: power meter, contact widget, result toast
+  hud/                      plain DOM/CSS: power meter, contact widget, result toast,
+                            Menu (top-right icons), ControlsPanel, SettingsPanel, storage
   audio/Audio.ts            Web Audio
   replay/Recorder.ts        ring buffer of Sim snapshots
-  debug/Panel.ts            lil-gui: launch test shots, draw flight path, live tuning
 tests/                      Vitest unit tests + golden/*.json trajectories
 ```
 The simulation steps once per frame through `Sim.step(input, dt)`, with input passed in as a plain struct. That makes it deterministic and testable, and it maps one-to-one onto a C `sim_step(Sim*, const Input*, float dt)`.
@@ -170,15 +235,11 @@ It builds with CMake, loads the same `data/` and is tested against `tests/golden
    - Set up Vite + TypeScript + `three` + Vitest + lil-gui.
    - Create the empty `sim/` and `render/` folders with an ESLint rule that blocks `three` imports inside `sim/`.
 1. **Scene:** pitch, markings, goal, net, sky, lights, set-piece camera. Ball placed at a configurable spot.
-2. **Ball physics:** integrator, drag, Magnus, bounce. A debug panel (lil-gui) to launch test shots and draw the flight path.
+2. **Ball physics:** integrator, drag, Magnus, bounce. The settings panel can place the ball and draw the predicted flight path.
 3. **Shot input:** InputManager, aim reticle and arrow, contact-point widget, power meter with sweet spot. ShotModel turns these into a launch.
 4. **Collisions and outcomes:** posts, bar, net, goal-line detection, result toast, reset.
-5. **Wall:** AI for count and placement, jump, lying man.
-6. **Goalkeeper:** positioning, reaction, dive selection, save/parry.
-7. **Taker:** placement by preferred foot, run-up adjustment, strike animation synced to the launch.
-8. **Presentation:** spray, distance readout, audio, replay.
-9. **Modes:** practice arena, skill challenges, taker roster.
-10. **Freeze the simulation:** record the golden trajectories and outcomes for a fixed set of shots, then write down the `Sim` state and input structs as the porting contract.
+5. **Wall:** layout, collisions, height setting. Done. Jump and extras: see 5b-5c above.
+6-13. See "Remaining Phase A steps" at the top of this file.
 
 ### Phase B: native OpenGL
 11. **Platform shell:** CMake, a GLFW or SDL3 window, an OpenGL 4.1 context, ImGui, the fixed-step loop and gamepad input.

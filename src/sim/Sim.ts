@@ -9,6 +9,8 @@ import {
 import { RngState, rngRange } from './math/rng';
 import { V3, clamp, copy, v3 } from './math/vec3';
 import { Shot, ShotParams, Taker, computeShot } from './ShotModel';
+import { SimSettings, defaultSettings } from './settings';
+import { WallState, layoutWall } from './Wall';
 
 export type Phase = 'aim' | 'charge' | 'runup' | 'flight' | 'result';
 export type ResultType = 'goal' | 'wide' | 'over' | 'miss';
@@ -48,6 +50,7 @@ export type SimEvent =
   | CollisionEvent;
 
 export interface SimConfig {
+  settings?: Partial<SimSettings>;
   physics: PhysicsParams;
   shot: ShotParams;
   takers: Taker[];
@@ -86,8 +89,11 @@ export interface SimState {
   previewKey: string;
   showPath: boolean;
 
-  result: { type: ResultType; woodwork: 'post' | 'bar' | null } | null;
+  settings: SimSettings;
+  wall: WallState | null;
+  result: { type: ResultType; woodwork: 'post' | 'bar' | null; wall: boolean } | null;
   woodwork: 'post' | 'bar' | null;
+  hitWall: boolean;
   netActive: boolean;
   flightT: number;
 
@@ -120,8 +126,11 @@ export function createSim(cfg: SimConfig, seed = 1234): SimState {
     preview: null,
     previewKey: '',
     showPath: false,
+    settings: { ...defaultSettings(), ...cfg.settings },
+    wall: null,
     result: null,
     woodwork: null,
+    hitWall: false,
     netActive: false,
     flightT: 0,
     stats: { attempts: 0, goals: 0 },
@@ -129,6 +138,7 @@ export function createSim(cfg: SimConfig, seed = 1234): SimState {
     events: [],
   };
   s.prevBallPos = copy(s.ball.pos);
+  s.wall = layoutWall(s.spot, s.settings);
   updatePreview(s);
   return s;
 }
@@ -152,10 +162,17 @@ function resetAttempt(s: SimState): void {
   s.pending = null;
   s.result = null;
   s.woodwork = null;
+  s.hitWall = false;
   s.netActive = false;
   s.flightT = 0;
+  s.wall = layoutWall(s.spot, s.settings);
   s.previewKey = '';
   updatePreview(s);
+}
+
+/** Apply changed settings. The wall is re-laid immediately while the player is still lining up. */
+export function applySettings(s: SimState): void {
+  if (s.phase === 'aim' || s.phase === 'charge') s.wall = layoutWall(s.spot, s.settings);
 }
 
 export function randomSpot(s: SimState): { x: number; z: number } {
@@ -230,7 +247,7 @@ function classifyCrossing(s: SimState): void {
 function finish(s: SimState, type: ResultType): void {
   s.phase = 'result';
   s.phaseT = 0;
-  s.result = { type, woodwork: s.woodwork };
+  s.result = { type, woodwork: s.woodwork, wall: s.hitWall };
   if (type === 'goal') {
     s.stats.goals++;
     s.events.push({ type: 'goal' });
@@ -296,9 +313,10 @@ export function step(s: SimState, input: InputState, dt: number): void {
 
   if (s.phase === 'flight' || s.phase === 'result') {
     const ev: CollisionEvent[] = [];
-    stepWorld(s.ball, P, dt, s.netActive, ev);
+    stepWorld(s.ball, P, dt, s.netActive, s.wall, ev);
     for (const e of ev) {
       if (e.type === 'post' || e.type === 'bar') s.woodwork = e.type;
+      if (e.type === 'wall') s.hitWall = true;
       s.events.push(e);
     }
   }

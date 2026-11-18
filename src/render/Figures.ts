@@ -2,59 +2,84 @@ import * as THREE from 'three';
 import { SimState } from '../sim/Sim';
 import { kickerPositions } from '../sim/layout';
 
-/** Placeholder low-poly taker: capsule body + head + two swinging legs. */
+export interface FigureColors {
+  shirt: number;
+  shorts: number;
+  skin: number;
+}
+
+export interface Figure {
+  group: THREE.Group;
+  body: THREE.Group;
+  /** Hips pivot at the +x side of a figure facing +z. */
+  legA: THREE.Group;
+  legB: THREE.Group;
+  armA: THREE.Mesh;
+  armB: THREE.Mesh;
+}
+
+/** Natural height of a figure from boots to top of head (metres). */
+export const FIGURE_HEIGHT = 1.92;
+
+/** Placeholder low-poly player: capsule torso + head + two legs + two arms. Faces +z. */
+export function buildFigure(c: FigureColors): Figure {
+  const shirt = new THREE.MeshStandardMaterial({ color: c.shirt, roughness: 0.7 });
+  const shorts = new THREE.MeshStandardMaterial({ color: c.shorts, roughness: 0.7 });
+  const skin = new THREE.MeshStandardMaterial({ color: c.skin, roughness: 0.8 });
+  const boot = new THREE.MeshStandardMaterial({ color: 0x111111 });
+
+  const group = new THREE.Group();
+  const body = new THREE.Group();
+  group.add(body);
+
+  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.45, 4, 10), shirt);
+  torso.position.y = 1.25;
+  torso.castShadow = true;
+  body.add(torso);
+
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 10), skin);
+  head.position.y = 1.78;
+  head.castShadow = true;
+  body.add(head);
+
+  const mkLeg = (x: number) => {
+    const hip = new THREE.Group();
+    hip.position.set(x, 0.95, 0);
+    const leg = new THREE.Mesh(new THREE.CapsuleGeometry(0.09, 0.62, 4, 8), shorts);
+    leg.position.y = -0.4;
+    leg.castShadow = true;
+    hip.add(leg);
+    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, 0.28), boot);
+    foot.position.set(0, -0.82, 0.07);
+    hip.add(foot);
+    body.add(hip);
+    return hip;
+  };
+  const mkArm = (x: number) => {
+    const a = new THREE.Mesh(new THREE.CapsuleGeometry(0.06, 0.4, 4, 8), shirt);
+    a.position.set(x, 1.3, 0);
+    body.add(a);
+    return a;
+  };
+  return { group, body, legA: mkLeg(0.12), legB: mkLeg(-0.12), armA: mkArm(0.3), armB: mkArm(-0.3) };
+}
+
+/** Taker: red shirt, swings the kicking leg through the ball. */
 export class KickerView {
-  readonly group = new THREE.Group();
+  readonly group: THREE.Group;
   private kickLeg: THREE.Group;
   private plantLeg: THREE.Group;
   private armL: THREE.Mesh;
   private armR: THREE.Mesh;
-  private body: THREE.Group;
 
   constructor() {
-    const shirt = new THREE.MeshStandardMaterial({ color: 0xd62828, roughness: 0.7 });
-    const shorts = new THREE.MeshStandardMaterial({ color: 0xf4f4f4, roughness: 0.7 });
-    const skin = new THREE.MeshStandardMaterial({ color: 0xc68c63, roughness: 0.8 });
-    const boot = new THREE.MeshStandardMaterial({ color: 0x111111 });
-
-    this.body = new THREE.Group();
-    this.group.add(this.body);
-
-    const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.45, 4, 10), shirt);
-    torso.position.y = 1.25;
-    torso.castShadow = true;
-    this.body.add(torso);
-
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 10), skin);
-    head.position.y = 1.78;
-    head.castShadow = true;
-    this.body.add(head);
-
-    const mkLeg = (x: number) => {
-      const hip = new THREE.Group();
-      hip.position.set(x, 0.95, 0);
-      const leg = new THREE.Mesh(new THREE.CapsuleGeometry(0.09, 0.62, 4, 8), shorts);
-      leg.position.y = -0.4;
-      leg.castShadow = true;
-      hip.add(leg);
-      const foot = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, 0.28), boot);
-      foot.position.set(0, -0.82, 0.07);
-      hip.add(foot);
-      this.body.add(hip);
-      return hip;
-    };
+    const f = buildFigure({ shirt: 0xd62828, shorts: 0xf4f4f4, skin: 0xc68c63 });
+    this.group = f.group;
     // Local forward = +z. "Right" leg is at -x for a body facing +z.
-    this.plantLeg = mkLeg(0.12);
-    this.kickLeg = mkLeg(-0.12);
-
-    const mkArm = (x: number) => {
-      const a = new THREE.Mesh(new THREE.CapsuleGeometry(0.06, 0.4, 4, 8), shirt);
-      a.position.set(x, 1.3, 0);
-      this.body.add(a);
-      return a;
-    };
-    this.armL = mkArm(0.3);
-    this.armR = mkArm(-0.3);
+    this.plantLeg = f.legA;
+    this.kickLeg = f.legB;
+    this.armL = f.armA;
+    this.armR = f.armB;
   }
 
   update(s: SimState): void {

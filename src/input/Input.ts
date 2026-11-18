@@ -14,9 +14,11 @@ export class Input {
   private cameraEdge = false;
   private prevCamera = false;
   usingPad = false;
+  private enabled = true;
 
   constructor() {
     window.addEventListener('keydown', (e) => {
+      if (!this.enabled) return;
       if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
       if (e.repeat) return;
       this.keys.add(e.code);
@@ -25,6 +27,15 @@ export class Input {
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
     window.addEventListener('blur', () => this.keys.clear());
+  }
+
+  /** Disable while a UI panel is open so typing/sliders don't steer the game. */
+  setEnabled(on: boolean): void {
+    this.enabled = on;
+    if (!on) {
+      this.keys.clear();
+      this.cameraEdge = false;
+    }
   }
 
   private k(...codes: string[]): boolean {

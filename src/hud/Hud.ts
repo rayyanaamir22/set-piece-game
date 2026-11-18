@@ -35,15 +35,6 @@ export class Hud {
     this.stats = el('div', 'row');
     tl.append(this.distance, this.info, this.stats);
 
-    const help = el(
-      'div',
-      'panel help',
-      `<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> aim target &nbsp; <kbd>I</kbd><kbd>J</kbd><kbd>K</kbd><kbd>L</kbd> contact point (<kbd>O</kbd> centre)<br>
-       hold <kbd>Space</kbd> to charge, release in the <span style="color:#46d369">green</span> zone<br>
-       <kbd>Shift</kbd> driven &nbsp; <kbd>Ctrl</kbd>/<kbd>Z</kbd> low &nbsp; <kbd>F</kbd> foot &nbsp; <kbd>C</kbd> camera<br>
-       <kbd>N</kbd> new spot &nbsp; <kbd>R</kbd> retry &nbsp; · gamepad supported`,
-    );
-
     this.meterWrap = el('div', 'meter-wrap');
     const meter = el('div', 'meter');
     const sweet = el('div', 'sweet');
@@ -61,7 +52,7 @@ export class Hud {
     contact.append(this.widget, this.curl);
 
     this.toast = el('div', 'toast');
-    root.append(tl, help, this.meterWrap, contact, this.toast);
+    root.append(tl, this.meterWrap, contact, this.toast);
   }
 
   private drawWidget(cx: number, cy: number, knuckle: boolean): void {
@@ -134,24 +125,30 @@ export class Hud {
       }
       return;
     }
-    const { type, woodwork } = s.result;
+    const { type, woodwork, wall } = s.result;
     const wood = woodwork === 'post' ? 'the post' : woodwork === 'bar' ? 'the crossbar' : '';
     let title: string;
     let sub = '';
     let cls: string;
     if (type === 'goal') {
-      title = woodwork ? 'GOAL!' : 'GOAL!';
-      sub = woodwork ? `Off ${wood} and in` : '';
+      title = 'GOAL!';
+      sub = woodwork ? `Off ${wood} and in` : wall ? 'Deflected off the wall' : '';
       cls = 'goal';
     } else if (woodwork) {
       title = woodwork === 'bar' ? 'Off the bar!' : 'Off the post!';
       sub = 'So close';
       cls = 'wood';
+    } else if (type === 'miss' && wall) {
+      title = 'Blocked!';
+      sub = 'Hit the wall';
+      cls = 'bad';
     } else if (type === 'over') {
       title = 'Over the bar';
+      sub = wall ? 'Deflected off the wall' : '';
       cls = 'bad';
     } else if (type === 'wide') {
       title = 'Wide';
+      sub = wall ? 'Deflected off the wall' : '';
       cls = 'bad';
     } else {
       title = 'Short';

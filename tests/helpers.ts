@@ -9,7 +9,8 @@ import { V3 } from '../src/sim/math/vec3';
 export const P = physics as PhysicsParams;
 export const SP = shot as ShotParams;
 export const TAKERS = takers as Taker[];
-export const CFG: SimConfig = { physics: P, shot: SP, takers: TAKERS };
+export const CFG: SimConfig = { physics: P, shot: SP, takers: TAKERS, settings: { wallEnabled: false } };
+export const CFG_WALL: SimConfig = { physics: P, shot: SP, takers: TAKERS, settings: { wallEnabled: true } };
 
 /** Free flight (no ground/posts) until z <= 0, returns samples. */
 export function fly(start: V3, vel: V3, spin: V3, params: PhysicsParams = P, knuckle?: { amp: number; phase: number[] }) {

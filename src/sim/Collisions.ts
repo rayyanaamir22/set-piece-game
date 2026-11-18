@@ -1,9 +1,10 @@
 import { BallState, PhysicsParams, groundContact, stepBall } from './BallPhysics';
 import { GOAL_DEPTH, GOAL_HALF_WIDTH, GOAL_HEIGHT, POST_RADIUS } from './constants';
 import { V3, add, dot, len, mul, sub, v3, clamp } from './math/vec3';
+import { WallState } from './Wall';
 
 export interface CollisionEvent {
-  type: 'post' | 'bar' | 'net' | 'bounce';
+  type: 'post' | 'bar' | 'net' | 'bounce' | 'wall';
   speed: number;
   pos: V3;
 }
@@ -21,24 +22,48 @@ const SEGMENTS: Segment[] = [
 ];
 
 /** Sphere vs capsule (segment + radius). Returns the impact speed, or 0 if no hit. */
-function collideSegment(b: BallState, P: PhysicsParams, s: Segment): number {
-  const ab = sub(s.b, s.a);
-  const t = clamp(dot(sub(b.pos, s.a), ab) / dot(ab, ab), 0, 1);
-  const closest = add(s.a, mul(ab, t));
+function collideCapsule(
+  b: BallState,
+  P: PhysicsParams,
+  a: V3,
+  c: V3,
+  radius: number,
+  restitution: number,
+  absorb: number,
+  spinKeep: number,
+): number {
+  const ab = sub(c, a);
+  const t = clamp(dot(sub(b.pos, a), ab) / dot(ab, ab), 0, 1);
+  const closest = add(a, mul(ab, t));
   const d = sub(b.pos, closest);
   const dist = len(d);
-  const minDist = P.radius + POST_RADIUS;
+  const minDist = P.radius + radius;
   if (dist >= minDist || dist < 1e-9) return 0;
 
   const n = mul(d, 1 / dist);
   b.pos = add(closest, mul(n, minDist));
   const vn = dot(b.vel, n);
   if (vn >= 0) return 0;
-  b.vel = add(b.vel, mul(n, -(1 + P.postRestitution) * vn));
-  // Scuff off the tangential component a little, and kill some spin.
-  b.vel = mul(b.vel, 0.95);
-  b.spin = mul(b.spin, 0.6);
+  b.vel = add(b.vel, mul(n, -(1 + restitution) * vn));
+  b.vel = mul(b.vel, absorb);
+  b.spin = mul(b.spin, spinKeep);
   return -vn;
+}
+
+function collideSegment(b: BallState, P: PhysicsParams, s: Segment): number {
+  return collideCapsule(b, P, s.a, s.b, POST_RADIUS, P.postRestitution, 0.95, 0.6);
+}
+
+/** Wall players are upright capsules spanning 0..height. Returns the hardest impact. */
+function collideWall(b: BallState, P: PhysicsParams, wall: WallState): number {
+  let hardest = 0;
+  const r = wall.radius;
+  for (const p of wall.players) {
+    const a = v3(p.x, r, p.z);
+    const c = v3(p.x, Math.max(r, wall.height - r), p.z);
+    hardest = Math.max(hardest, collideCapsule(b, P, a, c, r, 0.3, 0.75, 0.5));
+  }
+  return hardest;
 }
 
 /** The net: a soft box behind the goal line that swallows the ball. */
@@ -80,6 +105,7 @@ export function stepWorld(
   P: PhysicsParams,
   dt: number,
   netActive: boolean,
+  wall: WallState | null,
   out: CollisionEvent[],
 ): void {
   stepBall(b, P, dt);
@@ -90,6 +116,11 @@ export function stepWorld(
   for (const s of SEGMENTS) {
     const hit = collideSegment(b, P, s);
     if (hit > 0.5) out.push({ type: s.kind, speed: hit, pos: { ...b.pos } });
+  }
+
+  if (wall) {
+    const hit = collideWall(b, P, wall);
+    if (hit > 0.5) out.push({ type: 'wall', speed: hit, pos: { ...b.pos } });
   }
 
   if (netActive) {
