@@ -125,15 +125,25 @@ export class Hud {
       }
       return;
     }
-    const { type, woodwork, wall } = s.result;
+    const { type, woodwork, wall, keeper } = s.result;
     const wood = woodwork === 'post' ? 'the post' : woodwork === 'bar' ? 'the crossbar' : '';
     let title: string;
     let sub = '';
     let cls: string;
     if (type === 'goal') {
       title = 'GOAL!';
-      sub = woodwork ? `Off ${wood} and in` : wall ? 'Deflected off the wall' : '';
+      sub = woodwork
+        ? `Off ${wood} and in`
+        : keeper
+          ? 'Through the keeper\'s hands'
+          : wall
+            ? 'Deflected off the wall'
+            : '';
       cls = 'goal';
+    } else if (type === 'saved') {
+      title = 'Saved!';
+      sub = keeper === 'hold' ? 'The keeper holds it' : 'Pushed away';
+      cls = 'bad';
     } else if (woodwork) {
       title = woodwork === 'bar' ? 'Off the bar!' : 'Off the post!';
       sub = 'So close';

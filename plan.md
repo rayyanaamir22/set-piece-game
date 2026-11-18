@@ -15,13 +15,18 @@ A shooting-only free-kick game whose mechanics match EA FIFA / FC free kicks (FC
 | 4 Outcomes: goal / wide / over / short, woodwork flag, result toast, auto next spot | done |
 | 4b Menu: Controls and Settings sheets behind top-right icons, pausing the game, settings saved to localStorage | done |
 | 5 Wall: auto/explicit player count, placement covering the near post, capsule collisions, tunable height, "blocked" result | done |
-| 5b-13 | see "Remaining Phase A steps" below |
+| 5b Wall jump: per-player randomised jump on the strike, lifts the capsules, arms-up animation | done |
+| 6 Goalkeeper: positioning, reaction, partial spin read, timed dive, reach ellipse, hold / parry / block, result "saved" | done |
+| 7-13 | see "Remaining Phase A steps" below |
 
 ### Decisions made while building
 - **Fixed step is 240 Hz, not 120 Hz.** At 34 m/s the ball moves 0.14 m per step, which is under the post radius, so it can't tunnel through a post.
 - **The reticle is where the ball arrives.** A shooting-method solver (`ShotModel.computeShot`) picks the launch angles so the spinning, dragged ball reaches the reticle. The contact point therefore decides the *shape* of the path (curl round a wall, dip over it) and the arrow shows the initial direction, which diverges from the reticle when there's curl. Timing and taker accuracy add error on top. The solver ignores the wall, so the player has to choose a path that clears it.
 - **Contact point follows the physics.** Striking the right of the ball curls it left, striking the top dips it, and a dead-centre strike at high power is a knuckleball (low spin plus a seeded lateral wobble).
 - **The wall covers the near post**, like a real one: its near edge sits on the ball→near-post line and it extends towards the centre of goal. Shots to the far corner go round it; central and near-side shots need to go over it. Measured at 25 m: a flat shot is about 1.6-1.9 m high at the wall (blocked by the default 1.85 m wall), a dipping shot about 2.3 m (clears all wall heights).
+- **The keeper is beatable by design.** He (a) covers the far post and reaches only an ellipse around his stance, so top corners and the near post are out of range; (b) reacts after 0.28-0.48 s depending on skill; (c) reads the flight with only 50-95% of the spin, so curl can fool him, and never reads a knuckle wobble; (d) times his dive to arrive with the ball, with a second, better read just before he leaves the ground; (e) holds only slow shots (8-18 m/s depending on skill), otherwise he parries. Measured at skill 0.7 from 24 m, no wall: central mid-height shots are saved about 70%, far top corners score about 90%, near-post shots always score. Everything is tunable in `data/ai.json`.
+- **The wall jumps by about 0.4 m** (each player with a random 0-0.12 s delay and 0-15% less height, 10% chance to stay down), so with jumping on a flat shot is blocked and a central dip often clips the jumpers and goes over. The player's answers are a higher arc (less power plus dip), going round the end of the wall, or turning jumping off.
+- **Attempts end quickly after a deflection** (2.5 s after a wall hit, 1.2 s after a keeper touch) instead of waiting for the ball to stop rolling.
 - **Settings live in `SimState.settings` (`src/sim/settings.ts`)**, so the native build can load the same values. Anything not simulated yet is shown greyed out with a "soon" badge, so the final settings screen is already in place.
 - **Controls:** keyboard + gamepad are in. Mouse aim is not yet.
 
@@ -34,29 +39,24 @@ A shooting-only free-kick game whose mechanics match EA FIFA / FC free kicks (FC
 | Players in wall | 0 (auto) to 6 | active |
 | Taker accuracy / curve / power | 0-1 / 0-1.5 / 0.7-1.2 | active |
 | Show predicted path | bool | active |
-| Wall jumps on the strike | bool | soon (step 5b) |
-| Goalkeeper present | bool | soon (step 6) |
+| Wall jumps on the strike | bool | active |
+| Goalkeeper present | bool | active |
+| Keeper skill | 0-100%, default 70% | active |
 | Wind on/off, speed (0-15 m/s), direction (0-360°) | bool + sliders | soon (step 7) |
 
 ### Remaining Phase A steps
 Each step lists what to build, the setting that controls it, and how it is tested.
 
-5b. **Wall jump** (`wallJumps`)
-   - Players jump a short, randomised delay after the strike. The delay and jump height come from a new `data/ai.json`.
-   - While airborne their capsules rise (about 0.3-0.5 m), so a flat shot that clears a standing wall can hit a jumping one, and low shots that would have been blocked can pass underneath.
-   - Test: a shot with a fixed timing is blocked with jumping on and clears with it off.
 5c. **Wall extras**
-   - A "lying man" behind the wall that blocks low shots.
-   - Occasional early charge-off (encroachment) that gives a retake.
-   - Both get their own toggles in settings.
-6. **Goalkeeper** (`keeperPresent`)
-   - Positioning: covers the far side, about one step off centre, adjusting to the ball spot.
-   - Reaction delay, then a prediction of where the ball crosses the goal line, driven by keeper stats.
-   - Dive selection: step-across, full dive, tip over, parry or hold, each with a reach envelope so top corners and dip can beat him.
-   - Rare early-guess behaviour.
-   - Placeholder figure with dive animation.
-   - New results: saved, parried, held. Add keeper skill to settings.
-   - Tests: a central shot at mid-height is saved, a top-corner dip scores, determinism with the seeded rng.
+   - A "lying man" behind the wall that blocks low shots (toggle).
+   - Occasional early charge-off (encroachment) that gives a retake (toggle).
+   - Wall AI refinements: jump only on shots it judges dangerous, small shuffle on the run-up.
+6b. **Goalkeeper extras**
+   - Better dive/save animation (gloves, rotation about the body, rolling after the dive) and a keeper-specific camera replay.
+   - Rebounds: a parry should sometimes drop to the taker for a follow-up (needs a follow-up shot mode).
+   - Early-guess behaviour (rarely commits before the strike).
+   - Keeper stats per team (separate reach, reaction and hold values) via `data/ai.json` presets.
+
 7. **Wind** (`windEnabled`, `windSpeed`, `windDirection`)
    - Add wind to `BallPhysics.acceleration` (drag acts on velocity relative to the air). It is the only change needed in the sim, and the native port gets it for free.
    - HUD wind indicator (arrow and speed).

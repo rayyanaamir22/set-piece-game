@@ -133,13 +133,21 @@ export function buildSettingsPanel(
           fmt: (v) => (v === 0 ? 'Auto' : `${v}`),
           note: 'Auto: more players when closer and more central.',
         },
-        { kind: 'toggle', label: 'Wall jumps on the strike', soon: true, get: () => st.wallJumps, set: (v) => { st.wallJumps = v; changed(); } },
+        {
+          kind: 'toggle', label: 'Wall jumps on the strike', get: () => st.wallJumps, set: (v) => { st.wallJumps = v; changed(); },
+          note: 'Jumpers raise the wall by about 0.4 m as the ball arrives, so go over with extra dip or round the end.',
+        },
       ],
     },
     {
       title: 'Goalkeeper',
       rows: [
-        { kind: 'toggle', label: 'Goalkeeper present', soon: true, get: () => st.keeperPresent, set: (v) => { st.keeperPresent = v; changed(); } },
+        { kind: 'toggle', label: 'Goalkeeper present', get: () => st.keeperPresent, set: (v) => { st.keeperPresent = v; changed(); } },
+        {
+          kind: 'range', label: 'Keeper skill', min: 0, max: 1, step: 0.01,
+          get: () => st.keeperSkill, set: (v) => { st.keeperSkill = v; changed(); }, fmt: (v) => `${Math.round(v * 100)}%`,
+          note: 'Reaction time, how well he reads curl, dive speed and how hard a shot he can hold. He covers the far post, cannot reach the top corners and never accounts for a knuckleball.',
+        },
       ],
     },
     {

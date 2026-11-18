@@ -1,0 +1,40 @@
+{
+  "wall": {
+    "jumpChance": 0.9,
+    "reactionMin": 0.0,
+    "reactionMax": 0.12,
+    "jumpHeight": 0.42,
+    "jumpHeightJitter": 0.15,
+    "jumpDuration": 0.6,
+    "afterHitWait": 2.5
+  },
+  "keeper": {
+    "lineZ": 0.8,
+    "shadeMax": 1.2,
+    "reactionSlow": 0.48,
+    "reactionFast": 0.28,
+    "reactionJitter": 0.04,
+    "reachX": 2.4,
+    "reachY": 1.5,
+    "reachCenterY": 1.2,
+    "bodyLength": 2.2,
+    "standHeight": 1.9,
+    "radius": 0.24,
+    "armSpan": 0.8,
+    "armRadius": 0.12,
+    "armY": 1.5,
+    "diveSpeed": 5.2,
+    "minDiveTime": 0.22,
+    "maxDiveTime": 0.8,
+    "spinReadMin": 0.5,
+    "spinReadMax": 0.95,
+    "predictNoise": 0.9,
+    "ignoreMargin": 0.35,
+    "holdSpeedMin": 8,
+    "holdSpeedMax": 18,
+    "handsT": 0.5,
+    "knuckleHoldFactor": 0.6,
+    "afterTouchWait": 1.2,
+    "sinkTime": 0.35
+  }
+}

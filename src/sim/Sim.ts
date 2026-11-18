@@ -7,13 +7,16 @@ import {
   PENALTY_BOX_Z,
 } from './constants';
 import { RngState, rngRange } from './math/rng';
-import { V3, clamp, copy, v3 } from './math/vec3';
+import { V3, clamp, copy, lerp, v3 } from './math/vec3';
 import { Shot, ShotParams, Taker, computeShot } from './ShotModel';
+import { AiParams } from './ai';
+import { KeeperState, keeperOnStrike, keeperStep, layoutKeeper } from './Keeper';
 import { SimSettings, defaultSettings } from './settings';
-import { WallState, layoutWall } from './Wall';
+import { WallState, layoutWall, startWallJump, updateWallLift } from './Wall';
 
 export type Phase = 'aim' | 'charge' | 'runup' | 'flight' | 'result';
-export type ResultType = 'goal' | 'wide' | 'over' | 'miss';
+export type ResultType = 'goal' | 'wide' | 'over' | 'miss' | 'saved';
+export type KeeperTouch = 'hold' | 'touch';
 
 export interface InputState {
   /** Reticle velocity axes, -1..1 (+x right, +y up). */
@@ -53,6 +56,7 @@ export interface SimConfig {
   settings?: Partial<SimSettings>;
   physics: PhysicsParams;
   shot: ShotParams;
+  ai: AiParams;
   takers: Taker[];
 }
 
@@ -91,9 +95,20 @@ export interface SimState {
 
   settings: SimSettings;
   wall: WallState | null;
-  result: { type: ResultType; woodwork: 'post' | 'bar' | null; wall: boolean } | null;
+  keeper: KeeperState | null;
+  result: {
+    type: ResultType;
+    woodwork: 'post' | 'bar' | null;
+    wall: boolean;
+    keeper: KeeperTouch | null;
+  } | null;
   woodwork: 'post' | 'bar' | null;
   hitWall: boolean;
+  /** How the keeper first got to the ball: caught it ('hold') or got a hand/body to it ('touch'). */
+  keeperTouch: KeeperTouch | null;
+  /** flightT of the first deflection (wall or keeper); used to end the attempt after a wait. */
+  deflectT: number | null;
+  lastShotKnuckle: boolean;
   netActive: boolean;
   flightT: number;
 
@@ -128,9 +143,13 @@ export function createSim(cfg: SimConfig, seed = 1234): SimState {
     showPath: false,
     settings: { ...defaultSettings(), ...cfg.settings },
     wall: null,
+    keeper: null,
     result: null,
     woodwork: null,
     hitWall: false,
+    keeperTouch: null,
+    deflectT: null,
+    lastShotKnuckle: false,
     netActive: false,
     flightT: 0,
     stats: { attempts: 0, goals: 0 },
@@ -138,7 +157,7 @@ export function createSim(cfg: SimConfig, seed = 1234): SimState {
     events: [],
   };
   s.prevBallPos = copy(s.ball.pos);
-  s.wall = layoutWall(s.spot, s.settings);
+  layoutDefenders(s);
   updatePreview(s);
   return s;
 }
@@ -163,16 +182,23 @@ function resetAttempt(s: SimState): void {
   s.result = null;
   s.woodwork = null;
   s.hitWall = false;
+  s.keeperTouch = null;
+  s.deflectT = null;
   s.netActive = false;
   s.flightT = 0;
-  s.wall = layoutWall(s.spot, s.settings);
+  layoutDefenders(s);
   s.previewKey = '';
   updatePreview(s);
 }
 
-/** Apply changed settings. The wall is re-laid immediately while the player is still lining up. */
+function layoutDefenders(s: SimState): void {
+  s.wall = layoutWall(s.spot, s.settings);
+  s.keeper = layoutKeeper(s.spot, s.settings, s.cfg.ai.keeper);
+}
+
+/** Apply changed settings. Defenders are re-laid immediately while the player is still lining up. */
 export function applySettings(s: SimState): void {
-  if (s.phase === 'aim' || s.phase === 'charge') s.wall = layoutWall(s.spot, s.settings);
+  if (s.phase === 'aim' || s.phase === 'charge') layoutDefenders(s);
 }
 
 export function randomSpot(s: SimState): { x: number; z: number } {
@@ -247,12 +273,32 @@ function classifyCrossing(s: SimState): void {
 function finish(s: SimState, type: ResultType): void {
   s.phase = 'result';
   s.phaseT = 0;
-  s.result = { type, woodwork: s.woodwork, wall: s.hitWall };
+  // Anything the keeper got a touch to and that did not go in counts as a save
+  // (tipped over, pushed wide, held…).
+  if (s.keeperTouch && type !== 'goal') type = 'saved';
+  s.result = { type, woodwork: s.woodwork, wall: s.hitWall, keeper: s.keeperTouch };
   if (type === 'goal') {
     s.stats.goals++;
     s.events.push({ type: 'goal' });
   }
   s.events.push({ type: 'result', result: type });
+}
+
+function onKeeperContact(s: SimState, e: CollisionEvent): void {
+  if (s.keeperTouch || !s.keeper) return;
+  const ai = s.cfg.ai.keeper;
+  s.deflectT = s.flightT;
+  const holdMax =
+    lerp(ai.holdSpeedMin, ai.holdSpeedMax, s.keeper.skill) * (s.lastShotKnuckle ? ai.knuckleHoldFactor : 1);
+  if (e.hands && (e.preSpeed ?? Infinity) < holdMax) {
+    // Caught: the ball drops dead at his hands.
+    s.keeperTouch = 'hold';
+    s.ball.vel = v3(0, -0.5, 0.3);
+    s.ball.spin = v3();
+    finish(s, 'saved');
+  } else {
+    s.keeperTouch = 'touch';
+  }
 }
 
 export function step(s: SimState, input: InputState, dt: number): void {
@@ -304,6 +350,9 @@ export function step(s: SimState, input: InputState, dt: number): void {
       s.ball.spin = copy(shot.spin);
       s.ball.knuckle = { amp: shot.knuckle ? P.knuckleAccel : 0, phase: shot.knucklePhase };
       s.stats.attempts++;
+      s.lastShotKnuckle = shot.knuckle;
+      if (s.wall && s.settings.wallJumps) startWallJump(s.wall, s.cfg.ai.wall, s.rng);
+      if (s.keeper) keeperOnStrike(s.keeper, s.cfg.ai.keeper, s.rng);
       s.events.push({ type: 'strike', speed: shot.speed });
       s.phase = 'flight';
       s.phaseT = 0;
@@ -312,24 +361,34 @@ export function step(s: SimState, input: InputState, dt: number): void {
   }
 
   if (s.phase === 'flight' || s.phase === 'result') {
+    s.flightT += dt;
+    // Defenders move first, then the ball is stepped against their new positions.
+    if (s.wall) updateWallLift(s.wall, s.flightT);
+    if (s.keeper) keeperStep(s.keeper, s.flightT, s.ball, P, s.cfg.ai.keeper, s.rng);
+
     const ev: CollisionEvent[] = [];
-    stepWorld(s.ball, P, dt, s.netActive, s.wall, ev);
+    stepWorld(s.ball, P, dt, s.netActive, s.wall, s.keeper, s.cfg.ai.keeper, ev);
     for (const e of ev) {
       if (e.type === 'post' || e.type === 'bar') s.woodwork = e.type;
-      if (e.type === 'wall') s.hitWall = true;
+      if (e.type === 'wall') {
+        s.hitWall = true;
+        if (s.deflectT === null) s.deflectT = s.flightT;
+      }
+      if (e.type === 'keeper' && s.phase === 'flight') onKeeperContact(s, e);
       s.events.push(e);
     }
   }
 
   if (s.phase === 'flight') {
-    s.flightT += dt;
     const b = s.ball;
     if (b.pos.z < -P.radius) classifyCrossing(s);
     else {
       const speed = Math.hypot(b.vel.x, b.vel.y, b.vel.z);
       const settled = b.pos.y <= P.radius + 0.01 && speed < 0.4;
       const gone = Math.abs(b.pos.x) > 60 || b.pos.z > 70;
-      if (settled || gone || s.flightT > 7) finish(s, 'miss');
+      const wait = s.keeperTouch ? s.cfg.ai.keeper.afterTouchWait : s.cfg.ai.wall.afterHitWait;
+      const deflectDone = s.deflectT !== null && s.flightT - s.deflectT > wait;
+      if (settled || gone || deflectDone || s.flightT > 7) finish(s, 'miss');
     }
   } else if (s.phase === 'result') {
     if (edge(input.retry, s.prev.retry)) resetAttempt(s);

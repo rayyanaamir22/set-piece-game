@@ -1,7 +1,7 @@
 /**
  * User-tunable rules of the free kick. Lives in the sim state so the native
  * build can load the same values. Fields marked "reserved" are exposed in the
- * settings UI but not simulated yet (see plan.md, Phase A next steps).
+ * settings UI but not simulated yet (see plan.md, remaining Phase A steps).
  */
 export interface SimSettings {
   wallEnabled: boolean;
@@ -9,10 +9,12 @@ export interface SimSettings {
   wallHeight: number;
   /** Number of wall players; 0 = automatic from distance and angle. */
   wallCount: number;
-  /** reserved: wall players jump as the ball is struck. */
+  /** Wall players jump as the ball is struck. */
   wallJumps: boolean;
-  /** reserved: a goalkeeper defends the goal. */
+  /** A goalkeeper defends the goal. */
   keeperPresent: boolean;
+  /** 0..1: reaction time, prediction quality, dive speed and hold strength. */
+  keeperSkill: number;
   /** reserved: wind blows across the pitch. */
   windEnabled: boolean;
   /** reserved: wind speed in m/s. */
@@ -32,6 +34,7 @@ export const defaultSettings = (): SimSettings => ({
   wallCount: 0,
   wallJumps: true,
   keeperPresent: true,
+  keeperSkill: 0.7,
   windEnabled: false,
   windSpeed: 4,
   windDirection: 90,
@@ -49,6 +52,7 @@ export function sanitizeSettings(raw: Partial<SimSettings>): SimSettings {
     wallCount: Math.round(num(raw.wallCount, 0, WALL_COUNT_MAX, d.wallCount)),
     wallJumps: bool(raw.wallJumps, d.wallJumps),
     keeperPresent: bool(raw.keeperPresent, d.keeperPresent),
+    keeperSkill: num(raw.keeperSkill, 0, 1, d.keeperSkill),
     windEnabled: bool(raw.windEnabled, d.windEnabled),
     windSpeed: num(raw.windSpeed, 0, WIND_SPEED_MAX, d.windSpeed),
     windDirection: num(raw.windDirection, 0, 360, d.windDirection),

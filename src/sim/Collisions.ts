@@ -1,12 +1,17 @@
 import { BallState, PhysicsParams, groundContact, stepBall } from './BallPhysics';
 import { GOAL_DEPTH, GOAL_HALF_WIDTH, GOAL_HEIGHT, POST_RADIUS } from './constants';
 import { V3, add, dot, len, mul, sub, v3, clamp } from './math/vec3';
+import { KeeperAi } from './ai';
+import { KeeperState, keeperArmsOut, keeperArms } from './Keeper';
 import { WallState } from './Wall';
 
 export interface CollisionEvent {
-  type: 'post' | 'bar' | 'net' | 'bounce' | 'wall';
+  type: 'post' | 'bar' | 'net' | 'bounce' | 'wall' | 'keeper';
   speed: number;
   pos: V3;
+  /** keeper contacts: ball speed before the touch, and whether it was on the hands/upper body. */
+  preSpeed?: number;
+  hands?: boolean;
 }
 
 interface Segment {
@@ -31,9 +36,11 @@ function collideCapsule(
   restitution: number,
   absorb: number,
   spinKeep: number,
+  along?: { t: number },
 ): number {
   const ab = sub(c, a);
   const t = clamp(dot(sub(b.pos, a), ab) / dot(ab, ab), 0, 1);
+  if (along) along.t = t;
   const closest = add(a, mul(ab, t));
   const d = sub(b.pos, closest);
   const dist = len(d);
@@ -59,11 +66,31 @@ function collideWall(b: BallState, P: PhysicsParams, wall: WallState): number {
   let hardest = 0;
   const r = wall.radius;
   for (const p of wall.players) {
-    const a = v3(p.x, r, p.z);
-    const c = v3(p.x, Math.max(r, wall.height - r), p.z);
+    const lift = wall.lift[wall.players.indexOf(p)] ?? 0;
+    const a = v3(p.x, lift + r, p.z);
+    const c = v3(p.x, lift + Math.max(r, wall.height - r), p.z);
     hardest = Math.max(hardest, collideCapsule(b, P, a, c, r, 0.3, 0.75, 0.5));
   }
   return hardest;
+}
+
+/** Keeper: body capsule from feet to hands, plus an arms capsule while he is upright. */
+function collideKeeper(
+  b: BallState,
+  P: PhysicsParams,
+  k: KeeperState,
+  ai: KeeperAi,
+): { speed: number; preSpeed: number; hands: boolean } | null {
+  const pre = len(b.vel);
+  const info = { t: 0 };
+  let hit = collideCapsule(b, P, k.a, k.b, ai.radius, 0.35, 0.7, 0.5, info);
+  let hands = info.t >= ai.handsT;
+  if (hit === 0 && keeperArmsOut(k)) {
+    const arms = keeperArms(k, ai);
+    hit = collideCapsule(b, P, arms.a, arms.b, ai.armRadius, 0.35, 0.7, 0.5);
+    hands = hit > 0;
+  }
+  return hit > 0 ? { speed: hit, preSpeed: pre, hands } : null;
 }
 
 /** The net: a soft box behind the goal line that swallows the ball. */
@@ -106,6 +133,8 @@ export function stepWorld(
   dt: number,
   netActive: boolean,
   wall: WallState | null,
+  keeper: KeeperState | null,
+  keeperAi: KeeperAi,
   out: CollisionEvent[],
 ): void {
   stepBall(b, P, dt);
@@ -121,6 +150,13 @@ export function stepWorld(
   if (wall) {
     const hit = collideWall(b, P, wall);
     if (hit > 0.5) out.push({ type: 'wall', speed: hit, pos: { ...b.pos } });
+  }
+
+  if (keeper) {
+    const hit = collideKeeper(b, P, keeper, keeperAi);
+    if (hit && hit.speed > 0.3) {
+      out.push({ type: 'keeper', speed: hit.speed, pos: { ...b.pos }, preSpeed: hit.preSpeed, hands: hit.hands });
+    }
   }
 
   if (netActive) {

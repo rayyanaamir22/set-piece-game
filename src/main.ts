@@ -1,5 +1,6 @@
 import physics from '../data/physics.json';
 import shot from '../data/shot.json';
+import ai from '../data/ai.json';
 import takers from '../data/takers.json';
 import { Hud } from './hud/Hud';
 import { Menu } from './hud/Menu';
@@ -8,13 +9,15 @@ import { clearPrefs, loadPrefs, savePrefs } from './hud/storage';
 import { Input } from './input/Input';
 import { GameView } from './render/GameView';
 import { PhysicsParams } from './sim/BallPhysics';
+import { AiParams } from './sim/ai';
 import { ShotParams, Taker } from './sim/ShotModel';
-import { SimConfig, applySettings, createSim, step } from './sim/Sim';
+import { SimConfig, applySettings, createSim, setSpot, step } from './sim/Sim';
 import { defaultSettings } from './sim/settings';
 
 const cfg: SimConfig = {
   physics: physics as PhysicsParams,
   shot: shot as ShotParams,
+  ai: ai as AiParams,
   takers: (takers as Taker[]).map((t) => ({ ...t })),
 };
 
@@ -74,7 +77,7 @@ new Menu(
 );
 
 // Exposed for tuning/debugging from the console.
-(window as unknown as { sim: unknown }).sim = sim;
+Object.assign(window, { sim, simApi: { setSpot, applySettings } });
 
 let last = performance.now();
 let acc = 0;

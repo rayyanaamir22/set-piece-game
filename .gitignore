@@ -5,3 +5,6 @@ coverage/
 *.tsbuildinfo
 .env*
 npm-debug.log*
+
+# local source recording (kept out of the repo; see docs/demo.gif)
+public/juninho.mp4
