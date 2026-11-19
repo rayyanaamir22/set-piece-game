@@ -1,6 +1,6 @@
 import { BallState, PhysicsParams, newBall, stepBall } from './BallPhysics';
 import { RngState, rngNext } from './math/rng';
-import { V3, clamp } from './math/vec3';
+import { V3, clamp, lerp } from './math/vec3';
 
 export interface ShotParams {
   vMin: number;
@@ -21,8 +21,23 @@ export interface ShotParams {
   lowTargetY: number;
   lowTopspin: number;
   lowSpeed: number;
+  /** Launch elevation (degrees) of a low drive: it skims and skids along the ground instead of flying to the target. */
+  lowElevation: number;
   solverIterations: number;
   runupTime: number;
+  runupAngleDefault: number;
+  runupAngleMax: number;
+  runupDistDefault: number;
+  runupDistMin: number;
+  runupDistMax: number;
+  runupAngleRate: number;
+  runupDistRate: number;
+  powerStraight: number;
+  powerWide: number;
+  curlStraight: number;
+  curlWide: number;
+  distPower: number;
+  knuckleMaxAngle: number;
   aimSpeedX: number;
   aimSpeedY: number;
   resultTime: number;
@@ -50,6 +65,10 @@ export interface ShotRequest {
   driven: boolean;
   low: boolean;
   taker: Taker;
+  /** Run-up angle (degrees off the straight line behind the ball) and length (m). Omitted = the neutral default. */
+  runup?: { angle: number; dist: number };
+  /** Wind (m/s). Only used to draw the predicted-path aid: the launch solver ignores it, so wind makes the ball miss the reticle. */
+  wind?: V3;
   /** Pass null for a perfect (error-free, deterministic) shot, e.g. the aim preview. */
   rng: RngState | null;
 }
@@ -72,8 +91,41 @@ export interface Shot {
 
 const SOLVE_DT = 1 / 240;
 
-export function launchSpeed(power: number, driven: boolean, low: boolean, taker: Taker, SP: ShotParams): number {
-  let v = (SP.vMin + (SP.vMax - SP.vMin) * clamp(power, 0, 1)) * taker.power;
+export interface RunupEffect {
+  /** Multiplies launch speed. */
+  power: number;
+  /** Multiplies sidespin. */
+  curl: number;
+  /** A knuckleball needs a fairly straight approach. */
+  knuckleOk: boolean;
+}
+
+/**
+ * Straighter + longer run-up: more power, less curl. Wider: more curl, less power.
+ * Normalised so the default run-up is exactly neutral (multipliers 1).
+ */
+export function runupEffect(runup: { angle: number; dist: number } | undefined, SP: ShotParams): RunupEffect {
+  const angle = runup ? runup.angle : SP.runupAngleDefault;
+  const dist = runup ? runup.dist : SP.runupDistDefault;
+  const t = clamp(angle / SP.runupAngleMax, 0, 1);
+  const t0 = SP.runupAngleDefault / SP.runupAngleMax;
+  const angPower = lerp(SP.powerStraight, SP.powerWide, t) / lerp(SP.powerStraight, SP.powerWide, t0);
+  const angCurl = lerp(SP.curlStraight, SP.curlWide, t) / lerp(SP.curlStraight, SP.curlWide, t0);
+  const dd = dist - SP.runupDistDefault;
+  const span = dd >= 0 ? SP.runupDistMax - SP.runupDistDefault : SP.runupDistDefault - SP.runupDistMin;
+  const distPower = 1 + SP.distPower * clamp(dd / span, -1, 1);
+  return { power: angPower * distPower, curl: angCurl, knuckleOk: angle <= SP.knuckleMaxAngle };
+}
+
+export function launchSpeed(
+  power: number,
+  driven: boolean,
+  low: boolean,
+  taker: Taker,
+  SP: ShotParams,
+  runupPower = 1,
+): number {
+  let v = (SP.vMin + (SP.vMax - SP.vMin) * clamp(power, 0, 1)) * taker.power * runupPower;
   if (driven) v *= SP.drivenSpeed;
   if (low) v *= SP.lowSpeed;
   return v;
@@ -87,6 +139,7 @@ function spinFor(
   low: boolean,
   taker: Taker,
   SP: ShotParams,
+  fx: RunupEffect,
 ): { spin: V3; knuckle: boolean } {
   let cx = contact.x;
   let cy = contact.y;
@@ -95,7 +148,7 @@ function spinFor(
     cx /= m;
     cy /= m;
   }
-  const knuckle = Math.hypot(cx, cy) < SP.knuckleRadius && power >= SP.knuckleMinPower && !driven;
+  const knuckle = Math.hypot(cx, cy) < SP.knuckleRadius && power >= SP.knuckleMinPower && !driven && fx.knuckleOk;
   const rightX = Math.cos(az);
   const rightZ = Math.sin(az);
   if (knuckle) {
@@ -106,7 +159,7 @@ function spinFor(
   const scale = taker.curve * (driven ? SP.drivenSpin : 1);
   // Physics: striking the right of the ball spins it about +y (curls left);
   // striking the top gives topspin about -right (dips).
-  const wy = cx * SP.spinSide * scale;
+  const wy = cx * SP.spinSide * scale * fx.curl;
   const wr = -(cy + (low ? SP.lowTopspin : 0)) * SP.spinVert * scale;
   return { spin: { x: wr * rightX, y: wy, z: wr * rightZ }, knuckle: false };
 }
@@ -129,10 +182,12 @@ function flyToGoalPlane(
   spin: V3,
   P: PhysicsParams,
   path?: V3[],
+  wind?: V3,
 ): Crossing {
   const b: BallState = newBall({ x: spot.x, y: P.radius, z: spot.z });
   b.vel = vel;
   b.spin = spin;
+  if (wind) b.wind = wind;
   for (let i = 0; i < 1500; i++) {
     const prev = b.pos;
     stepBall(b, P, SOLVE_DT);
@@ -183,14 +238,15 @@ export function computeShot(req: ShotRequest, P: PhysicsParams, SP: ShotParams, 
   tx += ex;
   ty += ey;
 
-  const speed = launchSpeed(req.power, req.driven, req.low, taker, SP);
+  const fx = runupEffect(req.runup, SP);
+  const speed = launchSpeed(req.power, req.driven, req.low, taker, SP, fx.power);
   const dh = Math.hypot(tx - spot.x, spot.z);
 
   let az = Math.atan2(tx - spot.x, spot.z);
-  let el = ballisticElevation(dh, ty - P.radius, speed, P.gravity);
+  let el = req.low ? (SP.lowElevation * Math.PI) / 180 : ballisticElevation(dh, ty - P.radius, speed, P.gravity);
 
   for (let i = 0; i < SP.solverIterations; i++) {
-    const { spin: trialSpin } = spinFor(az, req.contact, req.power, req.driven, req.low, taker, SP);
+    const { spin: trialSpin } = spinFor(az, req.contact, req.power, req.driven, req.low, taker, SP, fx);
     const hit = flyToGoalPlane(spot, launchVelocity(az, el, speed), trialSpin, P);
     if (!hit.ok) {
       el += 0.05;
@@ -200,17 +256,18 @@ export function computeShot(req: ShotRequest, P: PhysicsParams, SP: ShotParams, 
     const errY = hit.y - ty;
     if (Math.abs(errX) < 0.02 && Math.abs(errY) < 0.02) break;
     az -= (errX / dh) * 0.9;
-    el -= (errY / dh) * 0.9;
+    // A low drive is hit along the ground: only the direction is solved, the height is up to the bounces.
+    if (!req.low) el -= (errY / dh) * 0.9;
     el = clamp(el, -0.1, 1.1);
   }
 
-  const { spin, knuckle } = spinFor(az, req.contact, req.power, req.driven, req.low, taker, SP);
+  const { spin, knuckle } = spinFor(az, req.contact, req.power, req.driven, req.low, taker, SP, fx);
   const vel = launchVelocity(az, el, speed);
 
   let path: V3[] | undefined;
   if (wantPath) {
     path = [{ x: spot.x, y: P.radius, z: spot.z }];
-    flyToGoalPlane(spot, vel, spin, P, path);
+    flyToGoalPlane(spot, vel, spin, P, path, req.wind);
   }
 
   return {

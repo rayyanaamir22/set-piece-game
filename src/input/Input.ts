@@ -49,6 +49,10 @@ export class Input {
     i.aimX = (this.k('KeyD', 'ArrowRight') ? 1 : 0) - (this.k('KeyA', 'ArrowLeft') ? 1 : 0);
     i.aimY = (this.k('KeyW', 'ArrowUp') ? 1 : 0) - (this.k('KeyS', 'ArrowDown') ? 1 : 0);
 
+    // Run-up arc: Q/E swing the start point round the ball, [ ] move it further away / closer.
+    i.runupAngle = (this.k('KeyE') ? 1 : 0) - (this.k('KeyQ') ? 1 : 0);
+    i.runupDist = (this.k('BracketRight') ? 1 : 0) - (this.k('BracketLeft') ? 1 : 0);
+
     const rate = 1.8;
     this.cursor.x += ((this.k('KeyL') ? 1 : 0) - (this.k('KeyJ') ? 1 : 0)) * rate * dt;
     this.cursor.y += ((this.k('KeyI') ? 1 : 0) - (this.k('KeyK') ? 1 : 0)) * rate * dt;
@@ -91,6 +95,9 @@ export class Input {
         i.contactY = -ry;
         this.cursor = { x: rx, y: -ry };
       }
+      const trig = (pad.buttons[7]?.value ?? 0) - (pad.buttons[6]?.value ?? 0);
+      if (Math.abs(trig) > 0.1) i.runupAngle = trig;
+      if (b(12) || b(13)) i.runupDist = (b(12) ? 1 : 0) - (b(13) ? 1 : 0);
       i.shoot = i.shoot || b(1);
       i.driven = i.driven || b(5);
       i.low = i.low || b(4);

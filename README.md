@@ -1,4 +1,4 @@
-# Set Piece
+# Set Piece Game
 
 A free-kick shooting game for the browser, built with Three.js. Aim a reticle at the goal, pick a contact point on the ball for curl, dip or a knuckleball, then time the power meter to beat a jumping wall and a goalkeeper.
 

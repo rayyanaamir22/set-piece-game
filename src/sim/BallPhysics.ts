@@ -38,6 +38,8 @@ export interface BallState {
   spin: V3;
   t: number;
   knuckle: Knuckle;
+  /** Air velocity (m/s). Drag and Magnus act on the ball's velocity *relative to the air*. */
+  wind: V3;
 }
 
 export function newBall(pos: V3): BallState {
@@ -47,6 +49,7 @@ export function newBall(pos: V3): BallState {
     spin: v3(),
     t: 0,
     knuckle: { amp: 0, phase: [0, 0, 0, 0, 0, 0] },
+    wind: v3(),
   };
 }
 
@@ -67,19 +70,21 @@ function knuckleNoise(t: number, ph: number[], offset: number): number {
 }
 
 /** Acceleration of the ball given velocity and spin (gravity + drag + Magnus + knuckle). */
-export function acceleration(vel: V3, spin: V3, t: number, k: Knuckle, P: PhysicsParams): V3 {
+export function acceleration(vel: V3, spin: V3, t: number, k: Knuckle, P: PhysicsParams, wind?: V3): V3 {
   let ax = 0;
   let ay = -P.gravity;
   let az = 0;
-  const speed = len(vel);
+  // Velocity relative to the air: with no wind this is just the ball velocity.
+  const rel = wind ? { x: vel.x - wind.x, y: vel.y - wind.y, z: vel.z - wind.z } : vel;
+  const speed = len(rel);
   if (speed > 1e-6) {
     const area = Math.PI * P.radius * P.radius;
     const kd = (0.5 * P.airDensity * dragCoefficient(speed, P) * area * speed) / P.mass;
-    ax -= kd * vel.x;
-    ay -= kd * vel.y;
-    az -= kd * vel.z;
+    ax -= kd * rel.x;
+    ay -= kd * rel.y;
+    az -= kd * rel.z;
 
-    const w = cross(spin, vel);
+    const w = cross(spin, rel);
     const wl = len(w);
     if (wl > 1e-9) {
       const spinPerp = wl / speed;
@@ -93,7 +98,7 @@ export function acceleration(vel: V3, spin: V3, t: number, k: Knuckle, P: Physic
 
     if (k.amp > 0) {
       const fade = smoothstep(P.knuckleSpeedMin, P.knuckleSpeedFull, speed);
-      const vhat = mul(vel, 1 / speed);
+      const vhat = mul(rel, 1 / speed);
       let b1 = norm(cross(vhat, v3(0, 1, 0)));
       if (len(b1) < 0.5) b1 = v3(1, 0, 0);
       const b2 = cross(b1, vhat);
@@ -111,13 +116,13 @@ export function acceleration(vel: V3, spin: V3, t: number, k: Knuckle, P: Physic
 export function stepBall(b: BallState, P: PhysicsParams, dt: number): void {
   const h = dt / 2;
   const v0 = b.vel;
-  const a1 = acceleration(v0, b.spin, b.t, b.knuckle, P);
+  const a1 = acceleration(v0, b.spin, b.t, b.knuckle, P, b.wind);
   const v1 = add(v0, mul(a1, h));
-  const a2 = acceleration(v1, b.spin, b.t + h, b.knuckle, P);
+  const a2 = acceleration(v1, b.spin, b.t + h, b.knuckle, P, b.wind);
   const v2 = add(v0, mul(a2, h));
-  const a3 = acceleration(v2, b.spin, b.t + h, b.knuckle, P);
+  const a3 = acceleration(v2, b.spin, b.t + h, b.knuckle, P, b.wind);
   const v3_ = add(v0, mul(a3, dt));
-  const a4 = acceleration(v3_, b.spin, b.t + dt, b.knuckle, P);
+  const a4 = acceleration(v3_, b.spin, b.t + dt, b.knuckle, P, b.wind);
 
   const dp = mul(add(add(v0, v3_), mul(add(v1, v2), 2)), dt / 6);
   const dv = mul(add(add(a1, a4), mul(add(a2, a3), 2)), dt / 6);

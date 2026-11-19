@@ -17,7 +17,11 @@ A shooting-only free-kick game whose mechanics match EA FIFA / FC free kicks (FC
 | 5 Wall: auto/explicit player count, placement covering the near post, capsule collisions, tunable height, "blocked" result | done |
 | 5b Wall jump: per-player randomised jump on the strike, lifts the capsules, arms-up animation | done |
 | 6 Goalkeeper: positioning, reaction, partial spin read, timed dive, reach ellipse, hold / parry / block, result "saved" | done |
-| 7-13 | see "Remaining Phase A steps" below |
+| 5c Wall extras: lying man, encroachment with retake, run-up shuffle, smart (on-target) jumping | done |
+| 6b Keeper extras: gloves + roll animation, rebounds / follow-up shots, early guess, keeper types | done (keeper replay camera moves to step 10) |
+| 7 Wind: drag and Magnus act on air-relative velocity, HUD arrow, settings | done |
+| 8 Run-up adjustment: arc angle + length, power/curl effects, knuckle rule, marker, controls | done |
+| 9-13 | see "Remaining Phase A steps" below |
 
 ### Decisions made while building
 - **Fixed step is 240 Hz, not 120 Hz.** At 34 m/s the ball moves 0.14 m per step, which is under the post radius, so it can't tunnel through a post.
@@ -27,6 +31,12 @@ A shooting-only free-kick game whose mechanics match EA FIFA / FC free kicks (FC
 - **The keeper is beatable by design.** He (a) covers the far post and reaches only an ellipse around his stance, so top corners and the near post are out of range; (b) reacts after 0.28-0.48 s depending on skill; (c) reads the flight with only 50-95% of the spin, so curl can fool him, and never reads a knuckle wobble; (d) times his dive to arrive with the ball, with a second, better read just before he leaves the ground; (e) holds only slow shots (8-18 m/s depending on skill), otherwise he parries. Measured at skill 0.7 from 24 m, no wall: central mid-height shots are saved about 70%, far top corners score about 90%, near-post shots always score. Everything is tunable in `data/ai.json`.
 - **The wall jumps by about 0.4 m** (each player with a random 0-0.12 s delay and 0-15% less height, 10% chance to stay down), so with jumping on a flat shot is blocked and a central dip often clips the jumpers and goes over. The player's answers are a higher arc (less power plus dip), going round the end of the wall, or turning jumping off.
 - **Attempts end quickly after a deflection** (2.5 s after a wall hit, 1.2 s after a keeper touch) instead of waiting for the ball to stop rolling.
+- **The low shot is now a real ground drive.** With the low modifier the launch is almost flat (0.6°) and the solver only works out the direction, so the ball skids along the grass instead of being lobbed to a low target. A jumping wall leaves a gap under it, so a drive can beat the jumpers, and the lying man exists to close that gap. Grounders lose speed on the grass, so the keeper usually holds ones that reach a corner.
+- **The wall jumps only at shots it thinks are dangerous:** on target (within 1 m of the frame). A height criterion (`jumpMinBallHeight`) exists but is off by default, so grounders still draw a jump.
+- **Encroachment is voided, not punished:** a creeping wall player makes the attempt a retake, but a goal stands (advantage). The attempt is not counted and the spot stays.
+- **Rebounds:** a parry that ends inside the box (|x| <= 18, 1.5 <= z <= 16) and slower than 9 m/s becomes a follow-up shot from where the ball lies (no wall, keeper back on his feet), up to 2 in a row.
+- **Wind** is steady (no gusts). The aim solver ignores it, so you have to allow for it; the keeper and the wall AI do see it, and the "Show predicted path" aid includes it. Wind adds to the ball's velocity relative to the air, so a headwind also raises drag.
+- **Run-up** multipliers are normalised so the default (35°, 3.5 m) is exactly neutral; a straight approach gives up to +6% power and -30% curl, a very wide one -10% power and +25% curl, and past 45° a centre strike is no longer a knuckleball.
 - **Settings live in `SimState.settings` (`src/sim/settings.ts`)**, so the native build can load the same values. Anything not simulated yet is shown greyed out with a "soon" badge, so the final settings screen is already in place.
 - **Controls:** keyboard + gamepad are in. Mouse aim is not yet.
 
@@ -42,34 +52,21 @@ A shooting-only free-kick game whose mechanics match EA FIFA / FC free kicks (FC
 | Wall jumps on the strike | bool | active |
 | Goalkeeper present | bool | active |
 | Keeper skill | 0-100%, default 70% | active |
-| Wind on/off, speed (0-15 m/s), direction (0-360°) | bool + sliders | soon (step 7) |
+| Lying man, encroachment | off / sometimes / always | active |
+| Keeper type (balanced, quick, tall, strong), rebounds | segmented, bool | active |
+| Wind on/off, speed (0-15 m/s), direction (0-360°) | bool + sliders | active |
+| Run-up angle (0-75°) and length (2-6 m) | sliders | active |
 
 ### Remaining Phase A steps
 Each step lists what to build, the setting that controls it, and how it is tested.
 
-5c. **Wall extras**
-   - A "lying man" behind the wall that blocks low shots (toggle).
-   - Occasional early charge-off (encroachment) that gives a retake (toggle).
-   - Wall AI refinements: jump only on shots it judges dangerous, small shuffle on the run-up.
-6b. **Goalkeeper extras**
-   - Better dive/save animation (gloves, rotation about the body, rolling after the dive) and a keeper-specific camera replay.
-   - Rebounds: a parry should sometimes drop to the taker for a follow-up (needs a follow-up shot mode).
-   - Early-guess behaviour (rarely commits before the strike).
-   - Keeper stats per team (separate reach, reaction and hold values) via `data/ai.json` presets.
+(Steps 5c, 6b, 7 and 8 are done. One leftover from 6b, the keeper-specific replay camera, belongs to step 10.)
 
-7. **Wind** (`windEnabled`, `windSpeed`, `windDirection`)
-   - Add wind to `BallPhysics.acceleration` (drag acts on velocity relative to the air). It is the only change needed in the sim, and the native port gets it for free.
-   - HUD wind indicator (arrow and speed).
-   - Design decision to confirm: the aim solver ignores wind, so the player has to allow for it (it makes the ball miss the reticle). The alternative is to include it so the reticle stays truthful.
-   - Tests: a crosswind pushes the ball the right way and the deflection grows with speed.
-8. **Run-up adjustment**
-   - Move the taker's start point along an arc around the ball.
-   - A straighter approach gives more power and less curl, a wider one more curl, feeding into `ShotModel`.
-   - The render layer already has the run-up animation.
 9. **Mouse aiming**
    - Drag or pointer-lock to move the reticle and contact point.
    - Sensitivity slider in settings.
 10. **Presentation**
+    - Replay cameras, including a keeper-focused one for saves.
     - Vanishing spray line for the ball spot and the 9.15 m wall line.
     - Goal replay from 2-3 cameras (ring buffer of sim snapshots).
     - Audio: crowd, strike, post, net and whistle sounds with a volume slider.

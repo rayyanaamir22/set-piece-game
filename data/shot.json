@@ -21,5 +21,19 @@
   "runupTime": 0.55,
   "aimSpeedX": 5,
   "aimSpeedY": 2.5,
-  "resultTime": 3.5
+  "resultTime": 3.5,
+  "runupAngleDefault": 35,
+  "runupAngleMax": 75,
+  "runupDistDefault": 3.5,
+  "runupDistMin": 2,
+  "runupDistMax": 6,
+  "runupAngleRate": 45,
+  "runupDistRate": 2,
+  "powerStraight": 1.06,
+  "powerWide": 0.9,
+  "curlStraight": 0.7,
+  "curlWide": 1.25,
+  "distPower": 0.05,
+  "knuckleMaxAngle": 45,
+  "lowElevation": 0.6
 }

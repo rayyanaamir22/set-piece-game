@@ -38,6 +38,13 @@ const GROUPS: Group[] = [
     ],
   },
   {
+    title: 'Run-up',
+    rows: [
+      { action: 'Swing the run-up round the ball', keys: [['Q', 'E']], pad: 'LT / RT', note: 'Straight = power, wide = curl.' },
+      { action: 'Shorter / longer run-up', keys: [['[', ']']], pad: 'D-pad ↓ / ↑' },
+    ],
+  },
+  {
     title: 'Free kick',
     rows: [
       { action: 'Switch footedness', keys: [['F']], pad: 'Y / △' },

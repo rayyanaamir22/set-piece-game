@@ -83,7 +83,7 @@ export class KickerView {
   }
 
   update(s: SimState): void {
-    const { runupStart, strike } = kickerPositions(s.spot, s.foot);
+    const { runupStart, strike } = kickerPositions(s.spot, s.foot, s.runup);
     // A right-footed taker kicks with the leg that ends up nearest the ball.
     const kickingRight = s.foot === 'R';
     const kick = kickingRight ? this.kickLeg : this.plantLeg;
@@ -94,7 +94,7 @@ export class KickerView {
       s.phase === 'aim' || s.phase === 'charge'
         ? -1
         : s.phase === 'runup'
-          ? Math.min(1, s.runupT / s.cfg.shot.runupTime)
+          ? Math.min(1, s.runupT / s.runupDur)
           : 1 + Math.min(1, s.phaseT / 0.5);
 
     const pos = new THREE.Vector3();

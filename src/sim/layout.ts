@@ -13,14 +13,22 @@ export function rightOf(dir: V3): V3 {
 /**
  * Where the taker stands. A right-footed taker stands to the LEFT of the ball
  * (so the right foot swings through it) and vice versa.
+ *
+ * The run-up start sits on an arc around the ball: `angle` degrees off the
+ * straight line behind the ball (towards the taker's side), `dist` metres away.
  */
-export function kickerPositions(spot: V3, foot: 'R' | 'L'): { runupStart: V3; strike: V3 } {
+export function kickerPositions(
+  spot: V3,
+  foot: 'R' | 'L',
+  runup: { angle: number; dist: number } = { angle: 35, dist: 3.5 },
+): { runupStart: V3; strike: V3 } {
   const d = dirToGoal(spot);
   const r = rightOf(d);
   const side = foot === 'R' ? -1 : 1;
   const strike = add(add(spot, mul(r, side * 0.8)), mul(d, -0.55));
-  const runupStart = add(add(strike, mul(r, side * 0.9)), mul(d, -2.0));
-  return { runupStart: { ...runupStart, y: 0 }, strike: { ...strike, y: 0 } };
+  const a = (runup.angle * Math.PI) / 180;
+  const start = add(add(spot, mul(d, -Math.cos(a) * runup.dist)), mul(r, side * Math.sin(a) * runup.dist));
+  return { runupStart: { ...start, y: 0 }, strike: { ...strike, y: 0 } };
 }
 
 export const origin = (): V3 => v3();

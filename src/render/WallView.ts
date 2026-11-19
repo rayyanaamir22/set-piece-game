@@ -10,8 +10,14 @@ export class WallView {
   readonly group = new THREE.Group();
   private pool: THREE.Group[] = [];
   private arms: [THREE.Mesh, THREE.Mesh][] = [];
+  private lying: THREE.Group;
 
   constructor() {
+    const l = buildFigure({ shirt: 0x1f4fbf, shorts: 0x14233f, skin: SKINS[2] });
+    l.group.rotation.order = 'YXZ';
+    l.group.visible = false;
+    this.lying = l.group;
+    this.group.add(l.group);
     for (let i = 0; i < WALL_COUNT_MAX; i++) {
       const f = buildFigure({ shirt: 0x1f4fbf, shorts: 0x14233f, skin: SKINS[i % SKINS.length] });
       // Hands cupped in front of the body.
@@ -28,6 +34,15 @@ export class WallView {
 
   update(s: SimState): void {
     const wall = s.wall;
+    const ly = wall?.lying;
+    this.lying.visible = !!ly;
+    if (ly) {
+      // Lies along the wall axis, head towards `b`, feet at `a`.
+      const dx = ly.b.x - ly.a.x;
+      const dz = ly.b.z - ly.a.z;
+      this.lying.position.set(ly.a.x, ly.radius, ly.a.z);
+      this.lying.rotation.set(0, Math.atan2(-dz, dx), -Math.PI / 2);
+    }
     for (let i = 0; i < this.pool.length; i++) {
       const g = this.pool[i];
       const p = wall?.players[i];

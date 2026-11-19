@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { SimState } from '../sim/Sim';
+import { kickerPositions } from '../sim/layout';
 
 /** Reticle on the goal plane, arrow pointing out of the ball, optional predicted path. */
 export class AimViz {
@@ -8,6 +9,8 @@ export class AimViz {
   private arrow: THREE.Mesh;
   private pathLine: THREE.Line;
   private ringMat: THREE.MeshBasicMaterial;
+  private runupLine: THREE.Line;
+  private runupRing: THREE.Mesh;
 
   constructor() {
     this.ringMat = new THREE.MeshBasicMaterial({
@@ -53,6 +56,20 @@ export class AimViz {
     this.arrow.renderOrder = 5;
     this.group.add(this.arrow);
 
+    // Run-up marker: dashed line from where the taker starts to the ball, with a ring at the start.
+    this.runupLine = new THREE.Line(
+      new THREE.BufferGeometry(),
+      new THREE.LineDashedMaterial({ color: 0xffffff, dashSize: 0.3, gapSize: 0.22, transparent: true, opacity: 0.8 }),
+    );
+    this.runupLine.frustumCulled = false;
+    this.group.add(this.runupLine);
+    this.runupRing = new THREE.Mesh(
+      new THREE.RingGeometry(0.25, 0.34, 28),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide }),
+    );
+    this.runupRing.rotation.x = -Math.PI / 2;
+    this.group.add(this.runupRing);
+
     this.pathLine = new THREE.Line(
       new THREE.BufferGeometry(),
       new THREE.LineBasicMaterial({ color: 0x4ee1ff }),
@@ -72,6 +89,16 @@ export class AimViz {
     this.reticle.scale.setScalar(Math.max(1, dist / 22));
     this.reticle.lookAt(camPos);
     this.ringMat.color.set(s.preview?.knuckle ? 0xff6b6b : 0xffd23f);
+
+    // Run-up marker (only while lining up).
+    const { runupStart, strike } = kickerPositions(s.spot, s.foot, s.runup);
+    this.runupLine.visible = this.runupRing.visible = aiming;
+    this.runupLine.geometry.setFromPoints([
+      new THREE.Vector3(runupStart.x, 0.04, runupStart.z),
+      new THREE.Vector3(strike.x, 0.04, strike.z),
+    ]);
+    this.runupLine.computeLineDistances();
+    this.runupRing.position.set(runupStart.x, 0.045, runupStart.z);
 
     // Arrow pointing along the launch direction (azimuth only; it lies on the grass).
     this.arrow.visible = aiming && !!s.preview;

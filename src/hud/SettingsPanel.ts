@@ -5,6 +5,8 @@ import {
   setSpot,
 } from '../sim/Sim';
 import {
+  Frequency,
+  KeeperType,
   WALL_COUNT_MAX,
   WALL_HEIGHT_MAX,
   WALL_HEIGHT_MIN,
@@ -119,6 +121,29 @@ export function buildSettingsPanel(
       ],
     },
     {
+      title: 'Run-up',
+      rows: [
+        {
+          kind: 'range', label: 'Approach angle', min: 0, max: s.cfg.shot.runupAngleMax, step: 1,
+          get: () => s.runup.angle, set: (v) => { s.runup.angle = v; onChange(); }, fmt: (v) => `${Math.round(v)}°`,
+          note: 'Straight = more power, less curl. Wide = more curl, less power. Past 45° a centre strike is no longer a knuckleball.',
+        },
+        {
+          kind: 'range', label: 'Run-up length', min: s.cfg.shot.runupDistMin, max: s.cfg.shot.runupDistMax, step: 0.1,
+          get: () => s.runup.dist, set: (v) => { s.runup.dist = v; onChange(); }, fmt: (v) => `${v.toFixed(1)} m`,
+          note: 'A longer run-up adds a little power.',
+        },
+        {
+          kind: 'button', label: 'Run-up', text: 'Reset run-up',
+          onClick: () => {
+            s.runup.angle = s.cfg.shot.runupAngleDefault;
+            s.runup.dist = s.cfg.shot.runupDistDefault;
+            onChange();
+          },
+        },
+      ],
+    },
+    {
       title: 'Defensive wall',
       rows: [
         { kind: 'toggle', label: 'Wall', get: () => st.wallEnabled, set: (v) => { st.wallEnabled = v; changed(); } },
@@ -140,6 +165,23 @@ export function buildSettingsPanel(
       ],
     },
     {
+      title: 'Wall extras',
+      rows: [
+        {
+          kind: 'segmented', label: 'Lying man',
+          options: [{ label: 'Off', value: 'off' }, { label: 'Sometimes', value: 'sometimes' }, { label: 'Always', value: 'always' }],
+          get: () => st.lyingMan, set: (v) => { st.lyingMan = v as Frequency; changed(); },
+          note: 'A player lies behind the wall and stops low shots that slide under the jumpers.',
+        },
+        {
+          kind: 'segmented', label: 'Encroachment',
+          options: [{ label: 'Off', value: 'off' }, { label: 'Sometimes', value: 'sometimes' }, { label: 'Always', value: 'always' }],
+          get: () => st.encroachment, set: (v) => { st.encroachment = v as Frequency; changed(); },
+          note: 'A wall player creeps forward before the kick. If the shot does not score, you retake it.',
+        },
+      ],
+    },
+    {
       title: 'Goalkeeper',
       rows: [
         { kind: 'toggle', label: 'Goalkeeper present', get: () => st.keeperPresent, set: (v) => { st.keeperPresent = v; changed(); } },
@@ -148,20 +190,35 @@ export function buildSettingsPanel(
           get: () => st.keeperSkill, set: (v) => { st.keeperSkill = v; changed(); }, fmt: (v) => `${Math.round(v * 100)}%`,
           note: 'Reaction time, how well he reads curl, dive speed and how hard a shot he can hold. He covers the far post, cannot reach the top corners and never accounts for a knuckleball.',
         },
+        {
+          kind: 'segmented', label: 'Keeper type',
+          options: [
+            { label: 'Balanced', value: 'balanced' },
+            { label: 'Quick', value: 'quick' },
+            { label: 'Tall', value: 'tall' },
+            { label: 'Strong', value: 'strong' },
+          ],
+          get: () => st.keeperType, set: (v) => { st.keeperType = v as KeeperType; changed(); },
+          note: 'Quick: fast reactions, short reach. Tall: long reach, slow to react. Strong: holds harder shots but reads curl worse.',
+        },
+        {
+          kind: 'toggle', label: 'Rebounds', get: () => st.rebounds, set: (v) => { st.rebounds = v; changed(); },
+          note: 'A parry that drops in the box becomes a follow-up shot.',
+        },
       ],
     },
     {
       title: 'Conditions',
       rows: [
-        { kind: 'toggle', label: 'Wind', soon: true, get: () => st.windEnabled, set: (v) => { st.windEnabled = v; changed(); } },
+        { kind: 'toggle', label: 'Wind', get: () => st.windEnabled, set: (v) => { st.windEnabled = v; changed(); } },
         {
-          kind: 'range', label: 'Wind speed', soon: true, min: 0, max: WIND_SPEED_MAX, step: 0.5,
+          kind: 'range', label: 'Wind speed', min: 0, max: WIND_SPEED_MAX, step: 0.5,
           get: () => st.windSpeed, set: (v) => { st.windSpeed = v; changed(); }, fmt: (v) => `${v.toFixed(1)} m/s`,
         },
         {
-          kind: 'range', label: 'Wind direction', soon: true, min: 0, max: 360, step: 5,
+          kind: 'range', label: 'Wind direction', min: 0, max: 360, step: 5,
           get: () => st.windDirection, set: (v) => { st.windDirection = v; changed(); }, fmt: (v) => `${Math.round(v)}°`,
-          note: '0° blows towards goal, 90° towards the right.',
+          note: '0° blows towards goal, 90° towards the right. The aim solver ignores wind, so you have to allow for it; "Show predicted path" includes it.',
         },
       ],
     },

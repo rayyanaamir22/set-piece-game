@@ -6,7 +6,22 @@
     "jumpHeight": 0.42,
     "jumpHeightJitter": 0.15,
     "jumpDuration": 0.6,
-    "afterHitWait": 2.5
+    "afterHitWait": 2.5,
+    "jumpMinBallHeight": 0,
+    "jumpOnTargetMargin": 1.0,
+    "lyingManChance": 0.3,
+    "lyingManDistance": 0.7,
+    "lyingManHalfLength": 0.9,
+    "lyingManRadius": 0.2,
+    "encroachChance": 0.15,
+    "encroachPlayers": 1,
+    "creepSpeed": 0.9,
+    "creepMax": 0.8,
+    "encroachThreshold": 0.3,
+    "rushSpeed": 3.5,
+    "rushMax": 3.0,
+    "shuffleAmp": 0.12,
+    "shuffleFreq": 1.6
   },
   "keeper": {
     "lineZ": 0.8,
@@ -35,6 +50,37 @@
     "handsT": 0.5,
     "knuckleHoldFactor": 0.6,
     "afterTouchWait": 1.2,
-    "sinkTime": 0.35
+    "sinkTime": 0.35,
+    "earlyGuessChance": 0.25,
+    "reboundMaxSpeed": 9,
+    "reboundBoxX": 18,
+    "reboundZMin": 1.5,
+    "reboundZMax": 16,
+    "maxRebounds": 2
+  },
+  "keeperPresets": {
+    "balanced": {},
+    "quick": {
+      "reactionSlow": 0.38,
+      "reactionFast": 0.2,
+      "diveSpeed": 6.3,
+      "reachX": 2.2,
+      "reachY": 1.4
+    },
+    "tall": {
+      "reachX": 2.7,
+      "reachY": 1.7,
+      "radius": 0.26,
+      "reactionSlow": 0.52,
+      "reactionFast": 0.32,
+      "diveSpeed": 4.8
+    },
+    "strong": {
+      "holdSpeedMin": 14,
+      "holdSpeedMax": 26,
+      "reactionSlow": 0.5,
+      "reactionFast": 0.3,
+      "spinReadMin": 0.4
+    }
   }
 }

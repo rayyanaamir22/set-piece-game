@@ -1,3 +1,6 @@
+import { dirToGoal, rightOf } from '../sim/layout';
+import { windVector } from '../sim/settings';
+import { runupEffect } from '../sim/ShotModel';
 import { SimState } from '../sim/Sim';
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', html = ''): HTMLElementTagNameMap[K] => {
@@ -20,6 +23,10 @@ export class Hud {
   private distance: HTMLElement;
   private info: HTMLElement;
   private stats: HTMLElement;
+  private runupRow: HTMLElement;
+  private windRow: HTMLElement;
+  private windArrow: HTMLElement;
+  private windText: HTMLElement;
   private fill: HTMLElement;
   private meterLabel: HTMLElement;
   private meterWrap: HTMLElement;
@@ -33,7 +40,16 @@ export class Hud {
     this.distance = el('div', 'big');
     this.info = el('div', 'row');
     this.stats = el('div', 'row');
-    tl.append(this.distance, this.info, this.stats);
+    this.runupRow = el('div', 'row');
+    this.windRow = el('div', 'row wind');
+    this.windArrow = el(
+      'span',
+      'wind-arrow',
+      '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 2 19 13h-5v9h-4v-9H5z"/></svg>',
+    );
+    this.windText = el('span');
+    this.windRow.append(this.windArrow, this.windText);
+    tl.append(this.distance, this.info, this.stats, this.runupRow, this.windRow);
 
     this.meterWrap = el('div', 'meter-wrap');
     const meter = el('div', 'meter');
@@ -93,7 +109,28 @@ export class Hud {
   update(s: SimState): void {
     const dist = Math.hypot(s.spot.x, s.spot.z);
     this.distance.textContent = `${Math.round(dist)} m`;
-    this.info.innerHTML = `<b>${s.taker.name}</b> · ${s.foot === 'R' ? 'right' : 'left'}-footed`;
+    this.info.innerHTML =
+      `<b>${s.taker.name}</b> · ${s.foot === 'R' ? 'right' : 'left'}-footed` + (s.followUp ? ' · <b class="rebound">Rebound!</b>' : '');
+
+    const fx = runupEffect(s.runup, s.cfg.shot);
+    const pct = (m: number) => `${m >= 1 ? '+' : '−'}${Math.round(Math.abs(m - 1) * 100)}%`;
+    this.runupRow.innerHTML =
+      `Run-up <b>${Math.round(s.runup.angle)}°</b> · <b>${s.runup.dist.toFixed(1)} m</b> ` +
+      `<span class="dim">power ${pct(fx.power)}, curl ${pct(fx.curl)}${fx.knuckleOk ? '' : ', no knuckle'}</span>`;
+
+    const w = windVector(s.settings);
+    const wspeed = Math.hypot(w.x, w.z);
+    this.windRow.style.display = wspeed > 0 ? '' : 'none';
+    if (wspeed > 0) {
+      // Arrow relative to the player's view: up = blowing towards goal.
+      const f = dirToGoal(s.spot);
+      const r = rightOf(f);
+      const up = w.x * f.x + w.z * f.z;
+      const right = w.x * r.x + w.z * r.z;
+      this.windArrow.style.transform = `rotate(${(Math.atan2(right, up) * 180) / Math.PI}deg)`;
+      const kind = Math.abs(up) > Math.abs(right) * 1.7 ? (up > 0 ? 'tailwind' : 'headwind') : Math.abs(right) > Math.abs(up) * 1.7 ? 'crosswind' : 'quartering';
+      this.windText.innerHTML = `Wind <b>${wspeed.toFixed(1)} m/s</b> <span class="dim">${kind}</span>`;
+    }
     this.stats.innerHTML = `Goals <b>${s.stats.goals}</b> / ${s.stats.attempts}`;
 
     const charging = s.phase === 'charge';
@@ -140,10 +177,14 @@ export class Hud {
             ? 'Deflected off the wall'
             : '';
       cls = 'goal';
+    } else if (type === 'retake') {
+      title = 'Retake!';
+      sub = 'The wall encroached';
+      cls = 'wood';
     } else if (type === 'saved') {
       title = 'Saved!';
-      sub = keeper === 'hold' ? 'The keeper holds it' : 'Pushed away';
-      cls = 'bad';
+      sub = keeper === 'hold' ? 'The keeper holds it' : s.result.rebound ? 'Spilled in the box: rebound!' : 'Pushed away';
+      cls = s.result.rebound ? 'wood' : 'bad';
     } else if (woodwork) {
       title = woodwork === 'bar' ? 'Off the bar!' : 'Off the post!';
       sub = 'So close';

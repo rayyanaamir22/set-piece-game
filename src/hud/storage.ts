@@ -6,6 +6,7 @@ export interface SavedPrefs {
   settings: Partial<SimSettings>;
   taker?: { accuracy: number; curve: number; power: number };
   foot?: 'R' | 'L';
+  runup?: { angle: number; dist: number };
   showPath?: boolean;
 }
 

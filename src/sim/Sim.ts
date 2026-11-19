@@ -9,13 +9,25 @@ import {
 import { RngState, rngRange } from './math/rng';
 import { V3, clamp, copy, lerp, v3 } from './math/vec3';
 import { Shot, ShotParams, Taker, computeShot } from './ShotModel';
-import { AiParams } from './ai';
+import { AiParams, KeeperAi, effectiveKeeperAi } from './ai';
 import { KeeperState, keeperOnStrike, keeperStep, layoutKeeper } from './Keeper';
-import { SimSettings, defaultSettings } from './settings';
-import { WallState, layoutWall, startWallJump, updateWallLift } from './Wall';
+import { SimSettings, defaultSettings, windVector } from './settings';
+import {
+  WallRolls,
+  WallState,
+  layoutWall,
+  noRolls,
+  rollWall,
+  startWallJump,
+  updateWallFlight,
+  updateWallLift,
+  updateWallRunup,
+  wallEncroaching,
+  wallShouldJump,
+} from './Wall';
 
 export type Phase = 'aim' | 'charge' | 'runup' | 'flight' | 'result';
-export type ResultType = 'goal' | 'wide' | 'over' | 'miss' | 'saved';
+export type ResultType = 'goal' | 'wide' | 'over' | 'miss' | 'saved' | 'retake';
 export type KeeperTouch = 'hold' | 'touch';
 
 export interface InputState {
@@ -31,6 +43,9 @@ export interface InputState {
   toggleFoot: boolean;
   retry: boolean;
   newSpot: boolean;
+  /** Run-up arc angle / distance axes, -1..1 (wider/longer = +1). */
+  runupAngle: number;
+  runupDist: number;
 }
 
 export const emptyInput = (): InputState => ({
@@ -44,6 +59,8 @@ export const emptyInput = (): InputState => ({
   toggleFoot: false,
   retry: false,
   newSpot: false,
+  runupAngle: 0,
+  runupDist: 0,
 });
 
 export type SimEvent =
@@ -93,7 +110,21 @@ export interface SimState {
   previewKey: string;
   showPath: boolean;
 
+  /** Run-up arc: degrees off the straight line behind the ball, and distance (m). */
+  runup: { angle: number; dist: number };
+  /** Duration of the current run-up animation/clock (scales with distance). */
+  runupDur: number;
+
   settings: SimSettings;
+  /** Keeper tuning in force: base values + the selected keeper type. */
+  keeperAi: KeeperAi;
+  /** Per-attempt random wall decisions (lying man, encroachment). */
+  rolls: WallRolls;
+  /** The wall was past the 9.15 m line at the strike (a retake unless it scores). */
+  encroached: boolean;
+  /** This attempt is a rebound follow-up after a parry. */
+  followUp: boolean;
+  reboundCount: number;
   wall: WallState | null;
   keeper: KeeperState | null;
   result: {
@@ -101,6 +132,8 @@ export interface SimState {
     woodwork: 'post' | 'bar' | null;
     wall: boolean;
     keeper: KeeperTouch | null;
+    /** The ball stayed in the box: a follow-up shot comes next. */
+    rebound: boolean;
   } | null;
   woodwork: 'post' | 'bar' | null;
   hitWall: boolean;
@@ -141,7 +174,14 @@ export function createSim(cfg: SimConfig, seed = 1234): SimState {
     preview: null,
     previewKey: '',
     showPath: false,
+    runup: { angle: cfg.shot.runupAngleDefault, dist: cfg.shot.runupDistDefault },
+    runupDur: cfg.shot.runupTime,
     settings: { ...defaultSettings(), ...cfg.settings },
+    keeperAi: cfg.ai.keeper,
+    rolls: noRolls(),
+    encroached: false,
+    followUp: false,
+    reboundCount: 0,
     wall: null,
     keeper: null,
     result: null,
@@ -157,13 +197,18 @@ export function createSim(cfg: SimConfig, seed = 1234): SimState {
     events: [],
   };
   s.prevBallPos = copy(s.ball.pos);
+  s.keeperAi = effectiveKeeperAi(cfg.ai, s.settings.keeperType);
+  s.rolls = rollWall(s.rng, s.settings, cfg.ai.wall);
+  s.ball.wind = windVector(s.settings);
   layoutDefenders(s);
   updatePreview(s);
   return s;
 }
 
 /** Put the ball on a new spot and return to the aiming phase. */
-export function setSpot(s: SimState, x: number, z: number): void {
+export function setSpot(s: SimState, x: number, z: number, followUp = false): void {
+  s.followUp = followUp;
+  s.reboundCount = followUp ? s.reboundCount + 1 : 0;
   s.spot = v3(x, 0, z);
   s.ball = newBall({ x, y: s.cfg.physics.radius, z });
   s.prevBallPos = copy(s.ball.pos);
@@ -184,21 +229,32 @@ function resetAttempt(s: SimState): void {
   s.hitWall = false;
   s.keeperTouch = null;
   s.deflectT = null;
+  s.encroached = false;
   s.netActive = false;
   s.flightT = 0;
+  s.keeperAi = effectiveKeeperAi(s.cfg.ai, s.settings.keeperType);
+  s.rolls = rollWall(s.rng, s.settings, s.cfg.ai.wall);
+  s.ball.wind = windVector(s.settings);
   layoutDefenders(s);
   s.previewKey = '';
   updatePreview(s);
 }
 
 function layoutDefenders(s: SimState): void {
-  s.wall = layoutWall(s.spot, s.settings);
-  s.keeper = layoutKeeper(s.spot, s.settings, s.cfg.ai.keeper);
+  // No wall on a rebound: it is a scramble in the box.
+  s.wall = s.followUp ? null : layoutWall(s.spot, s.settings, s.cfg.ai.wall, s.rolls);
+  s.keeper = layoutKeeper(s.spot, s.settings, s.keeperAi);
 }
 
 /** Apply changed settings. Defenders are re-laid immediately while the player is still lining up. */
 export function applySettings(s: SimState): void {
-  if (s.phase === 'aim' || s.phase === 'charge') layoutDefenders(s);
+  if (s.phase === 'aim' || s.phase === 'charge') {
+    s.keeperAi = effectiveKeeperAi(s.cfg.ai, s.settings.keeperType);
+    s.rolls = rollWall(s.rng, s.settings, s.cfg.ai.wall);
+    s.ball.wind = windVector(s.settings);
+    layoutDefenders(s);
+    s.previewKey = '';
+  }
 }
 
 export function randomSpot(s: SimState): { x: number; z: number } {
@@ -227,6 +283,9 @@ function shotRequest(s: SimState, power: number, withRng: boolean) {
     driven: s.driven,
     low: s.low,
     taker: s.taker,
+    runup: s.runup,
+    // The solver never uses wind; it is only passed so the optional path aid shows the real drift.
+    wind: s.showPath ? windVector(s.settings) : undefined,
     rng: withRng ? s.rng : null,
   };
 }
@@ -245,6 +304,9 @@ export function updatePreview(s: SimState): void {
     s.low,
     s.showPath,
     s.taker.name,
+    s.runup.angle.toFixed(1),
+    s.runup.dist.toFixed(2),
+    s.settings.windEnabled ? `${s.settings.windSpeed}/${s.settings.windDirection}` : 'nowind',
   ].join('|');
   if (key === s.previewKey) return;
   s.previewKey = key;
@@ -270,13 +332,36 @@ function classifyCrossing(s: SimState): void {
   }
 }
 
+/** Is a parried ball still live in the box (and slow enough to be played again)? */
+function reboundAvailable(s: SimState): boolean {
+  const ai = s.keeperAi;
+  const b = s.ball;
+  const speed = Math.hypot(b.vel.x, b.vel.y, b.vel.z);
+  return (
+    s.settings.rebounds &&
+    s.settings.keeperPresent &&
+    s.reboundCount < ai.maxRebounds &&
+    Math.abs(b.pos.x) <= ai.reboundBoxX &&
+    b.pos.z >= ai.reboundZMin &&
+    b.pos.z <= ai.reboundZMax &&
+    speed < ai.reboundMaxSpeed
+  );
+}
+
 function finish(s: SimState, type: ResultType): void {
   s.phase = 'result';
   s.phaseT = 0;
-  // Anything the keeper got a touch to and that did not go in counts as a save
-  // (tipped over, pushed wide, held…).
-  if (s.keeperTouch && type !== 'goal') type = 'saved';
-  s.result = { type, woodwork: s.woodwork, wall: s.hitWall, keeper: s.keeperTouch };
+  if (s.encroached && type !== 'goal') {
+    // The wall was off the line: no penalty for the taker. The attempt does not count; he retakes.
+    type = 'retake';
+    s.stats.attempts = Math.max(0, s.stats.attempts - 1);
+  } else if (s.keeperTouch && type !== 'goal') {
+    // Anything the keeper got a touch to and that did not go in counts as a save
+    // (tipped over, pushed wide, held…).
+    type = 'saved';
+  }
+  const rebound = type === 'saved' && s.keeperTouch === 'touch' && reboundAvailable(s);
+  s.result = { type, woodwork: s.woodwork, wall: s.hitWall, keeper: s.keeperTouch, rebound };
   if (type === 'goal') {
     s.stats.goals++;
     s.events.push({ type: 'goal' });
@@ -284,9 +369,17 @@ function finish(s: SimState, type: ResultType): void {
   s.events.push({ type: 'result', result: type });
 }
 
+/** After a parry that stayed in the box: take the loose ball where it lies. */
+function startFollowUp(s: SimState): void {
+  const ai = s.keeperAi;
+  const x = clamp(s.ball.pos.x, -ai.reboundBoxX, ai.reboundBoxX);
+  const z = clamp(s.ball.pos.z, 2.5, ai.reboundZMax);
+  setSpot(s, x, z, true);
+}
+
 function onKeeperContact(s: SimState, e: CollisionEvent): void {
   if (s.keeperTouch || !s.keeper) return;
-  const ai = s.cfg.ai.keeper;
+  const ai = s.keeperAi;
   s.deflectT = s.flightT;
   const holdMax =
     lerp(ai.holdSpeedMin, ai.holdSpeedMax, s.keeper.skill) * (s.lastShotKnuckle ? ai.knuckleHoldFactor : 1);
@@ -324,6 +417,8 @@ export function step(s: SimState, input: InputState, dt: number): void {
     s.contact.y += (cy - s.contact.y) * k;
     s.driven = input.driven;
     s.low = input.low;
+    s.runup.angle = clamp(s.runup.angle + input.runupAngle * SP.runupAngleRate * dt, 0, SP.runupAngleMax);
+    s.runup.dist = clamp(s.runup.dist + input.runupDist * SP.runupDistRate * dt, SP.runupDistMin, SP.runupDistMax);
   }
 
   if (s.phase === 'aim') {
@@ -341,18 +436,25 @@ export function step(s: SimState, input: InputState, dt: number): void {
       s.phase = 'runup';
       s.phaseT = 0;
       s.runupT = 0;
+      // A longer run-up takes longer.
+      s.runupDur = SP.runupTime * (s.runup.dist / SP.runupDistDefault);
     }
   } else if (s.phase === 'runup') {
     s.runupT += dt;
-    if (s.runupT >= SP.runupTime && s.pending) {
+    if (s.wall) updateWallRunup(s.wall, s.cfg.ai.wall, s.runupT);
+    if (s.runupT >= s.runupDur && s.pending) {
       const shot = s.pending;
       s.ball.vel = copy(shot.vel);
       s.ball.spin = copy(shot.spin);
       s.ball.knuckle = { amp: shot.knuckle ? P.knuckleAccel : 0, phase: shot.knucklePhase };
       s.stats.attempts++;
       s.lastShotKnuckle = shot.knuckle;
-      if (s.wall && s.settings.wallJumps) startWallJump(s.wall, s.cfg.ai.wall, s.rng);
-      if (s.keeper) keeperOnStrike(s.keeper, s.cfg.ai.keeper, s.rng);
+      s.ball.wind = windVector(s.settings);
+      s.encroached = !!s.wall && wallEncroaching(s.wall, s.cfg.ai.wall);
+      if (s.wall && s.settings.wallJumps) {
+        startWallJump(s.wall, s.cfg.ai.wall, s.rng, wallShouldJump(s.ball, s.spot, P, s.cfg.ai.wall));
+      }
+      if (s.keeper) keeperOnStrike(s.keeper, s.keeperAi, s.rng);
       s.events.push({ type: 'strike', speed: shot.speed });
       s.phase = 'flight';
       s.phaseT = 0;
@@ -363,11 +465,14 @@ export function step(s: SimState, input: InputState, dt: number): void {
   if (s.phase === 'flight' || s.phase === 'result') {
     s.flightT += dt;
     // Defenders move first, then the ball is stepped against their new positions.
-    if (s.wall) updateWallLift(s.wall, s.flightT);
-    if (s.keeper) keeperStep(s.keeper, s.flightT, s.ball, P, s.cfg.ai.keeper, s.rng);
+    if (s.wall) {
+      updateWallFlight(s.wall, s.cfg.ai.wall, dt);
+      updateWallLift(s.wall, s.flightT);
+    }
+    if (s.keeper) keeperStep(s.keeper, s.flightT, s.ball, P, s.keeperAi, s.rng);
 
     const ev: CollisionEvent[] = [];
-    stepWorld(s.ball, P, dt, s.netActive, s.wall, s.keeper, s.cfg.ai.keeper, ev);
+    stepWorld(s.ball, P, dt, s.netActive, s.wall, s.keeper, s.keeperAi, ev);
     for (const e of ev) {
       if (e.type === 'post' || e.type === 'bar') s.woodwork = e.type;
       if (e.type === 'wall') {
@@ -386,13 +491,19 @@ export function step(s: SimState, input: InputState, dt: number): void {
       const speed = Math.hypot(b.vel.x, b.vel.y, b.vel.z);
       const settled = b.pos.y <= P.radius + 0.01 && speed < 0.4;
       const gone = Math.abs(b.pos.x) > 60 || b.pos.z > 70;
-      const wait = s.keeperTouch ? s.cfg.ai.keeper.afterTouchWait : s.cfg.ai.wall.afterHitWait;
+      const wait = s.keeperTouch ? s.keeperAi.afterTouchWait : s.cfg.ai.wall.afterHitWait;
       const deflectDone = s.deflectT !== null && s.flightT - s.deflectT > wait;
       if (settled || gone || deflectDone || s.flightT > 7) finish(s, 'miss');
     }
   } else if (s.phase === 'result') {
+    const timeUp = s.phaseT > SP.resultTime;
     if (edge(input.retry, s.prev.retry)) resetAttempt(s);
-    else if (edge(input.newSpot, s.prev.newSpot) || s.phaseT > SP.resultTime) newSpot(s);
+    else if (edge(input.newSpot, s.prev.newSpot)) newSpot(s);
+    else if (timeUp) {
+      if (s.result?.type === 'retake') resetAttempt(s); // same spot, no penalty
+      else if (s.result?.rebound && reboundAvailable(s)) startFollowUp(s);
+      else newSpot(s);
+    }
   }
 
   if (s.phase === 'aim' || s.phase === 'charge') updatePreview(s);

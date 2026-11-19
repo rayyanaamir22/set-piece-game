@@ -33,6 +33,8 @@ export interface KeeperState {
   endB: V3;
   t0: number;
   dur: number;
+  /** -1/+1 if he committed to a side before the strike (a guess), else 0. */
+  guess: number;
 }
 
 const gauss = (r: RngState) => (rngNext(r) + rngNext(r) + rngNext(r) - 1.5) * 2;
@@ -59,6 +61,7 @@ export function layoutKeeper(spot: V3, settings: SimSettings, ai: KeeperAi): Kee
     endB: b,
     t0: 0,
     dur: 1,
+    guess: 0,
   };
 }
 
@@ -72,10 +75,20 @@ export function keeperArms(k: KeeperState, ai: KeeperAi): { a: V3; b: V3 } {
   return { a: v3(x - ai.armSpan, ai.armY, k.b.z), b: v3(x + ai.armSpan, ai.armY, k.b.z) };
 }
 
-/** Called at the strike: the keeper starts his reaction clock. */
+/**
+ * Called at the strike: the keeper starts his reaction clock. Occasionally
+ * (more often for weaker keepers) he has already guessed a side and goes
+ * for it without reading the shot at all.
+ */
 export function keeperOnStrike(k: KeeperState, ai: KeeperAi, rng: RngState): void {
   k.decideAt = lerp(ai.reactionSlow, ai.reactionFast, k.skill) + rngRange(rng, -ai.reactionJitter, ai.reactionJitter);
   k.phase = 'ready';
+  k.guess = 0;
+  if (rngNext(rng) < ai.earlyGuessChance * (1 - k.skill)) {
+    k.guess = rngNext(rng) < 0.5 ? -1 : 1;
+    k.phase = 'committed';
+    k.launchAt = 0.05;
+  }
 }
 
 interface Read {
@@ -100,7 +113,7 @@ function read(
 ): Read | null {
   const spinRead = lerp(ai.spinReadMin, ai.spinReadMax, k.skill);
   const spin = { x: ball.spin.x * spinRead, y: ball.spin.y * spinRead, z: ball.spin.z * spinRead };
-  const pred = predictAtPlane(ball.pos, ball.vel, spin, P, ai.lineZ);
+  const pred = predictAtPlane(ball.pos, ball.vel, spin, P, ai.lineZ, ball.wind);
   if (!pred) return null;
   const sd = (1 - k.skill) * ai.predictNoise * noiseScale;
   const px = pred.x + gauss(rng) * sd;
@@ -170,8 +183,10 @@ export function keeperStep(
 ): void {
   if (k.phase === 'ready' && t >= k.decideAt) decide(k, t, ball, P, ai, rng);
   if (k.phase === 'committed' && t >= k.launchAt) {
-    // Second, better-informed look just before leaving the ground.
-    const r = read(k, ball, P, ai, rng, 0.5);
+    // Second, better-informed look just before leaving the ground (a guess has no look: he just goes).
+    const r: Read | null = k.guess
+      ? { px: k.b.x + k.guess * 1.9, py: 1.0, t: 0 }
+      : read(k, ball, P, ai, rng, 0.5);
     if (!r) {
       k.phase = 'watching';
       return;

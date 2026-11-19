@@ -34,6 +34,10 @@ if (prefs) {
   Object.assign(sim.settings, prefs.settings);
   if (prefs.taker) Object.assign(sim.taker, prefs.taker);
   if (prefs.foot) sim.foot = prefs.foot;
+  if (prefs.runup && Number.isFinite(prefs.runup.angle) && Number.isFinite(prefs.runup.dist)) {
+    sim.runup.angle = Math.min(cfg.shot.runupAngleMax, Math.max(0, prefs.runup.angle));
+    sim.runup.dist = Math.min(cfg.shot.runupDistMax, Math.max(cfg.shot.runupDistMin, prefs.runup.dist));
+  }
   if (prefs.showPath) sim.showPath = true;
 }
 applySettings(sim);
@@ -43,6 +47,7 @@ function persist() {
     settings: { ...sim.settings },
     taker: { accuracy: sim.taker.accuracy, curve: sim.taker.curve, power: sim.taker.power },
     foot: sim.foot,
+    runup: { ...sim.runup },
     showPath: sim.showPath,
   });
 }
@@ -59,6 +64,8 @@ const settings = buildSettingsPanel(
     // "Reset all settings"
     Object.assign(sim.settings, defaultSettings());
     Object.assign(sim.taker, defaultTaker);
+    sim.runup.angle = cfg.shot.runupAngleDefault;
+    sim.runup.dist = cfg.shot.runupDistDefault;
     sim.showPath = false;
     sim.previewKey = '';
     applySettings(sim);

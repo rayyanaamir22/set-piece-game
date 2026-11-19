@@ -71,6 +71,9 @@ function collideWall(b: BallState, P: PhysicsParams, wall: WallState): number {
     const c = v3(p.x, lift + Math.max(r, wall.height - r), p.z);
     hardest = Math.max(hardest, collideCapsule(b, P, a, c, r, 0.3, 0.75, 0.5));
   }
+  if (wall.lying) {
+    hardest = Math.max(hardest, collideCapsule(b, P, wall.lying.a, wall.lying.b, wall.lying.radius, 0.3, 0.75, 0.5));
+  }
   return hardest;
 }
 
