@@ -8,3 +8,6 @@ npm-debug.log*
 
 # local source recording (kept out of the repo; see docs/demo.gif)
 public/juninho.mp4
+
+# Dear ImGui window layout (native build)
+imgui.ini
