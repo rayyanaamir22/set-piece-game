@@ -104,18 +104,19 @@ native/
 - `npm run contract` writes `docs/porting-contract.md`, generated from the TypeScript: every state/input structure, the exact `step` order, the RNG, the driver procedure and the tolerances. A test fails if it is stale.
 - Still to do: set up Git LFS for `assets/` when the first binary assets arrive.
 
-**B1. Platform shell**
+**B1. Platform shell: done**
 - CMake project with an SDL3 window, a GL 4.1 core context and ImGui.
 - Fixed 240 Hz sim loop with render interpolation.
 - Input mapping identical to the web build: keyboard, and gamepads via SDL's mapping database.
 - CI builds on macOS, Windows and Linux.
 - Exit: an empty scene runs at the display refresh rate, and input events show in the ImGui overlay.
 
-**B2. Sim port and parity**
+**B2. Sim port and parity: done**
 - Port every `src/sim` module and load `data/*.json`.
 - The golden runner replays each fixture through `sim::step` and compares with the recorded states.
 - Port the pure Vitest unit tests to doctest.
 - Exit: all goldens pass in CI (ball position within 1 cm for the whole flight, identical results and RNG state), and the ported unit tests pass.
+- Done: `native/src/sim` ports every module (JS-compatible `Math.hypot`/`min`/`max`/`round`/`sign`; `-ffp-contract=off` so the compiler cannot fuse multiply-adds). `native/tests/golden_driver.cpp` replays `tests/golden/*.json` with the contract's tolerances; the unit tests are ported to doctest (`unit_*.cpp`). Not ported because they test web-only code: `input`, `replay`, `contract`.
 
 **B3. Graybox and feature parity**
 - Pitch, markings, goal frame, capsule players, ball, reticle, aim arrow, run-up marker and path aid.

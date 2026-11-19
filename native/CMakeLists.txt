@@ -27,6 +27,19 @@ CPMAddPackage(
   DOWNLOAD_ONLY YES
 )
 
+CPMAddPackage(
+  NAME nlohmann_json
+  GITHUB_REPOSITORY nlohmann/json
+  GIT_TAG v3.12.0
+  OPTIONS "JSON_BuildTests OFF" "JSON_Install OFF"
+)
+CPMAddPackage(
+  NAME doctest
+  GITHUB_REPOSITORY doctest/doctest
+  GIT_TAG v2.4.12
+  DOWNLOAD_ONLY YES
+)
+
 # ---- glad: GL 4.1 core loader (generated once with glad2, committed) ----
 add_library(glad STATIC third_party/glad/src/gl.c)
 target_include_directories(glad PUBLIC third_party/glad/include)
@@ -43,8 +56,21 @@ target_include_directories(imgui PUBLIC ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/
 target_link_libraries(imgui PUBLIC SDL3::SDL3-static)
 
 # ---- sim: pure, no platform/graphics includes (target boundary enforced by what it links) ----
-add_library(sim STATIC src/sim/input_state.cpp)
+add_library(sim STATIC
+  src/sim/input_state.cpp
+  src/sim/settings.cpp
+  src/sim/BallPhysics.cpp
+  src/sim/Prediction.cpp
+  src/sim/ShotModel.cpp
+  src/sim/Wall.cpp
+  src/sim/Keeper.cpp
+  src/sim/Collisions.cpp
+  src/sim/challenge.cpp
+  src/sim/layout.cpp
+  src/sim/Sim.cpp
+  src/sim/config_io.cpp)
 target_include_directories(sim PUBLIC src)
+target_link_libraries(sim PUBLIC nlohmann_json::nlohmann_json)
 
 # ---- platform: window, input mapping, timing ----
 add_library(platform STATIC
@@ -57,10 +83,26 @@ target_link_libraries(platform PUBLIC sim glad SDL3::SDL3-static)
 add_executable(setpiece src/app/main.cpp src/app/overlay.cpp)
 target_link_libraries(setpiece PRIVATE platform imgui)
 
+# ---- tests (doctest): golden parity + ported unit tests ----
+option(SETPIECE_BUILD_TESTS "Build the doctest suite" ON)
+if(SETPIECE_BUILD_TESTS)
+  enable_testing()
+  file(GLOB UNIT_TESTS CONFIGURE_DEPENDS tests/*.cpp)
+  add_executable(sim_tests ${UNIT_TESTS})
+  target_include_directories(sim_tests PRIVATE ${doctest_SOURCE_DIR})
+  target_link_libraries(sim_tests PRIVATE sim)
+  target_compile_definitions(sim_tests PRIVATE SETPIECE_REPO_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/..")
+  if(NOT MSVC)
+    target_compile_options(sim_tests PRIVATE -Wall -Wextra)
+  endif()
+  add_test(NAME sim_tests COMMAND sim_tests)
+endif()
+
 if(MSVC)
   target_compile_options(platform PRIVATE /W4)
+  target_compile_options(sim PRIVATE /fp:precise)  # no FMA contraction: keeps parity with V8
 else()
-  target_compile_options(sim PRIVATE -Wall -Wextra -Wpedantic)
+  target_compile_options(sim PRIVATE -Wall -Wextra -Wpedantic -ffp-contract=off)
   target_compile_options(platform PRIVATE -Wall -Wextra -Wpedantic)
   target_compile_options(setpiece PRIVATE -Wall -Wextra -Wpedantic)
 endif()
