@@ -25,6 +25,8 @@ export interface ShotParams {
   lowElevation: number;
   solverIterations: number;
   runupTime: number;
+  /** Extra run-up time (s) when a dummy runner goes first. */
+  dummyDelay: number;
   runupAngleDefault: number;
   runupAngleMax: number;
   runupDistDefault: number;
@@ -45,6 +47,8 @@ export interface ShotParams {
 
 export interface Taker {
   name: string;
+  /** Short description for the roster picker. */
+  style?: string;
   foot: 'R' | 'L';
   /** 0..1: shrinks the random aim error. */
   accuracy: number;

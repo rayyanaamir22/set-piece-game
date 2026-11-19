@@ -1,0 +1,205 @@
+[
+  {
+    "id": "top-bins",
+    "name": "Top Bins",
+    "desc": "No wall, no keeper. Hit the top corners.",
+    "shots": 5,
+    "spot": {
+      "x": -8,
+      "z": 22
+    },
+    "settings": {
+      "wallEnabled": false,
+      "keeperPresent": false,
+      "windEnabled": false,
+      "rebounds": false
+    },
+    "targets": [
+      {
+        "x": -3.0,
+        "y": 1.85,
+        "r": 0.55,
+        "points": 4
+      },
+      {
+        "x": 3.0,
+        "y": 1.85,
+        "r": 0.55,
+        "points": 4
+      }
+    ],
+    "goalPoints": 1,
+    "medals": {
+      "bronze": 6,
+      "silver": 12,
+      "gold": 18
+    }
+  },
+  {
+    "id": "over-the-wall",
+    "name": "Over the Wall",
+    "desc": "A tall wall that jumps. Dip it over and in.",
+    "shots": 5,
+    "spot": {
+      "x": 0,
+      "z": 21
+    },
+    "settings": {
+      "wallEnabled": true,
+      "wallHeight": 1.95,
+      "wallCount": 5,
+      "wallJumps": true,
+      "lyingMan": "off",
+      "encroachment": "off",
+      "keeperPresent": false,
+      "windEnabled": false
+    },
+    "targets": [
+      {
+        "x": -2.8,
+        "y": 1.8,
+        "r": 0.6,
+        "points": 5
+      },
+      {
+        "x": 2.8,
+        "y": 1.8,
+        "r": 0.6,
+        "points": 5
+      }
+    ],
+    "goalPoints": 2,
+    "medals": {
+      "bronze": 5,
+      "silver": 10,
+      "gold": 15
+    }
+  },
+  {
+    "id": "under-the-wall",
+    "name": "Under the Wall",
+    "desc": "Skid a low drive beneath the jumpers.",
+    "shots": 5,
+    "spot": {
+      "x": -5,
+      "z": 20
+    },
+    "settings": {
+      "wallEnabled": true,
+      "wallHeight": 1.85,
+      "wallCount": 4,
+      "wallJumps": true,
+      "lyingMan": "off",
+      "encroachment": "off",
+      "keeperPresent": false,
+      "windEnabled": false
+    },
+    "targets": [
+      {
+        "x": -2.9,
+        "y": 0.35,
+        "r": 0.3,
+        "points": 5
+      },
+      {
+        "x": 2.9,
+        "y": 0.35,
+        "r": 0.3,
+        "points": 5
+      }
+    ],
+    "goalPoints": 2,
+    "medals": {
+      "bronze": 5,
+      "silver": 10,
+      "gold": 20
+    }
+  },
+  {
+    "id": "keeper-duel",
+    "name": "Keeper Duel",
+    "desc": "A sharp keeper. Find the corners he cannot reach.",
+    "shots": 5,
+    "spot": {
+      "x": 4,
+      "z": 23
+    },
+    "settings": {
+      "wallEnabled": false,
+      "keeperPresent": true,
+      "keeperSkill": 0.9,
+      "keeperType": "balanced",
+      "windEnabled": false,
+      "rebounds": false
+    },
+    "targets": [
+      {
+        "x": 3.0,
+        "y": 1.85,
+        "r": 0.55,
+        "points": 5
+      },
+      {
+        "x": -3.0,
+        "y": 1.85,
+        "r": 0.55,
+        "points": 4
+      },
+      {
+        "x": 0.0,
+        "y": 1.2,
+        "r": 0.4,
+        "points": 7
+      }
+    ],
+    "goalPoints": 2,
+    "medals": {
+      "bronze": 4,
+      "silver": 9,
+      "gold": 15
+    }
+  },
+  {
+    "id": "windy-day",
+    "name": "Windy Day",
+    "desc": "A stiff crosswind. Allow for it.",
+    "shots": 5,
+    "spot": {
+      "x": 0,
+      "z": 24
+    },
+    "settings": {
+      "wallEnabled": false,
+      "keeperPresent": false,
+      "windEnabled": true,
+      "windSpeed": 8,
+      "windDirection": 90
+    },
+    "targets": [
+      {
+        "x": -2.5,
+        "y": 1.3,
+        "r": 0.55,
+        "points": 4
+      },
+      {
+        "x": 2.5,
+        "y": 1.3,
+        "r": 0.55,
+        "points": 4
+      },
+      {
+        "x": 0,
+        "y": 1.9,
+        "r": 0.5,
+        "points": 5
+      }
+    ],
+    "goalPoints": 1,
+    "medals": {
+      "bronze": 6,
+      "silver": 12,
+      "gold": 18
+    }
+  }
+]

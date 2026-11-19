@@ -21,7 +21,9 @@
     "rushSpeed": 3.5,
     "rushMax": 3.0,
     "shuffleAmp": 0.12,
-    "shuffleFreq": 1.6
+    "shuffleFreq": 1.6,
+    "dummyJumpChance": 0.7,
+    "dummyJumpReactionMax": 0.1
   },
   "keeper": {
     "lineZ": 0.8,
@@ -56,7 +58,8 @@
     "reboundBoxX": 18,
     "reboundZMin": 1.5,
     "reboundZMax": 16,
-    "maxRebounds": 2
+    "maxRebounds": 2,
+    "dummyBite": 0.35
   },
   "keeperPresets": {
     "balanced": {},

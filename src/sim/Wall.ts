@@ -31,6 +31,8 @@ export interface WallState {
   lift: number[];
   /** Per-player jump plan, set when the ball is struck (null = nobody jumps). */
   jump: { start: number[]; height: number[]; duration: number } | null;
+  /** Players who already jumped for a dummy run-up (they will not jump again at the real strike). */
+  earlyJumped: boolean[];
   /** A player lying on the ground behind the wall (blocks low shots), as a horizontal capsule. */
   lying: { a: V3; b: V3; radius: number } | null;
 }
@@ -67,6 +69,8 @@ export function autoWallCount(spot: V3): number {
  */
 export function layoutWall(spot: V3, settings: SimSettings, ai?: WallAi, rolls: WallRolls = noRolls()): WallState | null {
   if (!settings.wallEnabled) return null;
+  // Too close to goal for a 9.15 m wall to fit between the ball and the goal line.
+  if (Math.hypot(spot.x, spot.z) < WALL_DISTANCE + 1.5) return null;
   const n = settings.wallCount > 0 ? settings.wallCount : autoWallCount(spot);
   const width = (n - 1) * WALL_SPACING + 2 * WALL_PLAYER_RADIUS;
 
@@ -119,6 +123,7 @@ export function layoutWall(spot: V3, settings: SimSettings, ai?: WallAi, rolls: 
     facing,
     lift: base.map(() => 0),
     jump: null,
+    earlyJumped: base.map(() => false),
     lying,
   };
 }
@@ -173,16 +178,41 @@ export function wallShouldJump(ball: BallState, spot: V3, P: PhysicsParams, ai: 
   return !!atWall && atWall.y > ai.jumpMinBallHeight;
 }
 
-/** Called at the strike: each player decides whether and when to jump. Encroachers are busy charging. */
-export function startWallJump(wall: WallState, ai: WallAi, rng: RngState, shouldJump = true): void {
+/** A dummy run-up: the first runner steps over the ball and some of the wall jumps for it, too early. */
+export function wallDummyJump(wall: WallState, ai: WallAi, rng: RngState): void {
+  const start: number[] = [];
+  const height: number[] = [];
+  for (let i = 0; i < wall.players.length; i++) {
+    const jumps = rngNext(rng) < ai.dummyJumpChance && !wall.encroachers.includes(i);
+    const delay = rngRange(rng, 0, ai.dummyJumpReactionMax);
+    const h = ai.jumpHeight * (1 - ai.jumpHeightJitter * rngNext(rng));
+    start.push(delay);
+    height.push(jumps ? h : 0);
+    wall.earlyJumped[i] = jumps;
+  }
+  wall.jump = { start, height, duration: ai.jumpDuration };
+}
+
+/**
+ * Called at the strike: each player decides whether and when to jump. Encroachers are busy charging.
+ * `sinceDummy` is how long ago the dummy run happened (0 if there was none): players who jumped for it
+ * carry on with that jump (and are down again by the time the ball arrives) instead of jumping twice.
+ */
+export function startWallJump(wall: WallState, ai: WallAi, rng: RngState, shouldJump = true, sinceDummy = 0): void {
+  const early = wall.jump;
   const start: number[] = [];
   const height: number[] = [];
   for (let i = 0; i < wall.players.length; i++) {
     const jumps = rngNext(rng) < ai.jumpChance;
     const delay = rngRange(rng, ai.reactionMin, ai.reactionMax);
     const h = ai.jumpHeight * (1 - ai.jumpHeightJitter * rngNext(rng));
-    start.push(delay);
-    height.push(shouldJump && jumps && !wall.encroachers.includes(i) ? h : 0);
+    if (early && wall.earlyJumped[i]) {
+      start.push(early.start[i] - sinceDummy);
+      height.push(early.height[i]);
+    } else {
+      start.push(delay);
+      height.push(shouldJump && jumps && !wall.encroachers.includes(i) ? h : 0);
+    }
   }
   wall.jump = { start, height, duration: ai.jumpDuration };
 }

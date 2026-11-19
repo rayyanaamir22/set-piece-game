@@ -1,9 +1,13 @@
 import physics from '../data/physics.json';
 import shot from '../data/shot.json';
 import ai from '../data/ai.json';
+import challenges from '../data/challenges.json';
+import presets from '../data/presets.json';
 import takers from '../data/takers.json';
 import { PhysicsParams, newBall, stepBall } from '../src/sim/BallPhysics';
 import { AiParams } from '../src/sim/ai';
+import { ChallengeDef } from '../src/sim/challenge';
+import { DifficultyName, DifficultyPreset } from '../src/sim/presets';
 import { SimSettings } from '../src/sim/settings';
 import { InputState, SimState, emptyInput, step } from '../src/sim/Sim';
 import { ShotParams, Taker } from '../src/sim/ShotModel';
@@ -14,6 +18,8 @@ export const P = physics as PhysicsParams;
 export const SP = shot as ShotParams;
 export const TAKERS = takers as Taker[];
 export const AI = ai as AiParams;
+export const CHALLENGES = challenges as ChallengeDef[];
+export const PRESETS = presets as Record<DifficultyName, DifficultyPreset>;
 
 /** Build a sim config. Defenders are off unless a test asks for them, so each test isolates one thing. */
 export function makeCfg(settings: Partial<SimSettings> = {}, aiOverride: Partial<{ wall: Partial<AiParams['wall']>; keeper: Partial<AiParams['keeper']> }> = {}): SimConfig {
@@ -21,6 +27,8 @@ export function makeCfg(settings: Partial<SimSettings> = {}, aiOverride: Partial
     physics: P,
     shot: SP,
     takers: TAKERS.map((t) => ({ ...t })),
+    challenges: CHALLENGES,
+    presets: PRESETS,
     ai: { wall: { ...AI.wall, ...aiOverride.wall }, keeper: { ...AI.keeper, ...aiOverride.keeper }, keeperPresets: AI.keeperPresets },
     settings: {
       wallEnabled: false,

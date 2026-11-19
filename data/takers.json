@@ -1,4 +1,50 @@
 [
-  { "name": "Taker 10", "foot": "R", "accuracy": 0.85, "curve": 0.9, "power": 1.0 },
-  { "name": "Taker 7", "foot": "L", "accuracy": 0.75, "curve": 1.0, "power": 0.95 }
+  {
+    "name": "Taker 10",
+    "style": "All-rounder",
+    "foot": "R",
+    "accuracy": 0.85,
+    "curve": 0.9,
+    "power": 1.0
+  },
+  {
+    "name": "Taker 7",
+    "style": "Lefty curler",
+    "foot": "L",
+    "accuracy": 0.75,
+    "curve": 1.0,
+    "power": 0.95
+  },
+  {
+    "name": "Taker 9",
+    "style": "Cannon",
+    "foot": "R",
+    "accuracy": 0.7,
+    "curve": 0.65,
+    "power": 1.1
+  },
+  {
+    "name": "Taker 4",
+    "style": "Technician",
+    "foot": "R",
+    "accuracy": 0.95,
+    "curve": 0.85,
+    "power": 0.9
+  },
+  {
+    "name": "Taker 11",
+    "style": "Knuckle specialist",
+    "foot": "L",
+    "accuracy": 0.8,
+    "curve": 0.5,
+    "power": 1.05
+  },
+  {
+    "name": "Taker 6",
+    "style": "Banana bender",
+    "foot": "R",
+    "accuracy": 0.78,
+    "curve": 1.35,
+    "power": 0.92
+  }
 ]

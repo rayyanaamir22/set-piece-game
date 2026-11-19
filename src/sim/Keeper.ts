@@ -80,11 +80,11 @@ export function keeperArms(k: KeeperState, ai: KeeperAi): { a: V3; b: V3 } {
  * (more often for weaker keepers) he has already guessed a side and goes
  * for it without reading the shot at all.
  */
-export function keeperOnStrike(k: KeeperState, ai: KeeperAi, rng: RngState): void {
+export function keeperOnStrike(k: KeeperState, ai: KeeperAi, rng: RngState, dummy = false): void {
   k.decideAt = lerp(ai.reactionSlow, ai.reactionFast, k.skill) + rngRange(rng, -ai.reactionJitter, ai.reactionJitter);
   k.phase = 'ready';
   k.guess = 0;
-  if (rngNext(rng) < ai.earlyGuessChance * (1 - k.skill)) {
+  if (rngNext(rng) < (ai.earlyGuessChance + (dummy ? ai.dummyBite : 0)) * (1 - k.skill)) {
     k.guess = rngNext(rng) < 0.5 ? -1 : 1;
     k.phase = 'committed';
     k.launchAt = 0.05;

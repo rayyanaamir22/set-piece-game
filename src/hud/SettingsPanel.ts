@@ -1,4 +1,11 @@
+import type { ClientPrefs, Quality, TimeOfDay } from '../prefs';
+import { REPLAY_SPEEDS } from '../prefs';
+import { SENS_MAX, SENS_MIN } from '../input/mouse';
+import type { ChallengeDef } from '../sim/challenge';
+import { DIFFICULTIES, DifficultyName, DifficultyPreset } from '../sim/presets';
+import type { Taker } from '../sim/ShotModel';
 import {
+  Mode,
   SimState,
   applySettings,
   randomSpot,
@@ -18,7 +25,8 @@ interface Base {
   label: string;
   /** Shown as a "soon" badge; the control is greyed out because the feature isn't simulated yet. */
   soon?: boolean;
-  note?: string;
+  /** Help text under the control; a function is re-read whenever the panel refreshes. */
+  note?: string | (() => string);
 }
 interface RangeRow extends Base {
   kind: 'range';
@@ -57,10 +65,28 @@ export interface SettingsPanel {
   sync(): void;
 }
 
+/** Everything about the player's own setup (not the rules of the free kick) that the panel needs. */
+export interface ClientCtx {
+  prefs: ClientPrefs;
+  takers: Taker[];
+  challenges: ChallengeDef[];
+  presets: Record<DifficultyName, DifficultyPreset>;
+  /** Persist the client prefs and push them into the running subsystems (audio, graphics, mouse…). */
+  apply(): void;
+  setMode(mode: Mode): void;
+  startChallenge(index: number): void;
+  selectTaker(index: number): void;
+  applyDifficulty(name: DifficultyName): void;
+  /** Practice: toggle click-to-place mode. */
+  togglePlacing(): void;
+  isPlacing(): boolean;
+}
+
 export function buildSettingsPanel(
   s: SimState,
   onChange: () => void,
   onReset: () => void,
+  ctx: ClientCtx,
 ): SettingsPanel {
   // Ball placement is edited locally and applied with a button.
   const place = {
@@ -68,10 +94,143 @@ export function buildSettingsPanel(
     angle: (Math.atan2(s.spot.x, s.spot.z) * 180) / Math.PI,
   };
   const st = s.settings;
+  const P = ctx.prefs;
   const changed = () => {
     applySettings(s);
+    // Hand-editing a rule means it is no longer one of the presets.
+    s.difficulty = 'custom';
+    P.difficulty = 'custom';
     onChange();
   };
+  const medalIcon = (id: string) => ({ gold: '🥇', silver: '🥈', bronze: '🥉' } as Record<string, string>)[P.medals[id] ?? ''] ?? '';
+  const client = <K extends keyof ClientPrefs>(k: K) => ({
+    get: () => P[k] as never,
+    set: (v: never) => {
+      P[k] = v;
+      ctx.apply();
+    },
+  });
+
+  const pre: Section[] = [
+    {
+      title: 'Game mode',
+      rows: [
+        {
+          kind: 'segmented', label: 'Mode',
+          options: [{ label: 'Free kicks', value: 'free' }, { label: 'Practice', value: 'practice' }, { label: 'Challenge', value: 'challenge' }],
+          get: () => s.mode,
+          set: (v) => ctx.setMode(v as Mode),
+          note: () =>
+            s.mode === 'free' ? 'A new spot every kick. Scored by goals.'
+              : s.mode === 'practice' ? 'The ball stays where it is for instant retries. N picks a random spot; P places it with a click.'
+                : 'Pick a challenge below: a fixed spot, rules and target rings. Gold needs most of the rings.',
+        },
+        {
+          kind: 'segmented', label: 'Challenge',
+          options: ctx.challenges.map((_c, i) => ({ label: `${i + 1}`, value: String(i) })),
+          get: () => (s.challenge ? String(s.challenge.index) : ''),
+          set: (v) => ctx.startChallenge(Number(v)),
+          note: () => {
+            const c = ctx.challenges[s.challenge ? s.challenge.index : P.challengeIndex];
+            const best = P.best[c.id];
+            return `${c.name}: ${c.desc} Medals ${c.medals.bronze} / ${c.medals.silver} / ${c.medals.gold}.${best !== undefined ? ` Best ${best} ${medalIcon(c.id)}` : ''}`;
+          },
+        },
+        {
+          kind: 'button', label: 'Practice', text: 'Place ball with a click (P)',
+          onClick: () => { ctx.setMode('practice'); ctx.togglePlacing(); },
+        },
+      ],
+    },
+    {
+      title: 'Difficulty',
+      rows: [
+        {
+          kind: 'segmented', label: 'Preset',
+          options: DIFFICULTIES.map((d) => ({ label: ctx.presets[d].label, value: d })),
+          get: () => s.difficulty,
+          set: (v) => ctx.applyDifficulty(v as DifficultyName),
+          note: 'Sets the keeper, wall, wind and your accuracy together. Editing any of those afterwards makes it "custom".',
+        },
+      ],
+    },
+    {
+      title: 'Taker',
+      rows: [
+        {
+          kind: 'segmented', label: 'Roster',
+          options: ctx.takers.map((_t, i) => ({ label: `${i + 1}`, value: String(i) })),
+          get: () => String(s.takerIndex),
+          set: (v) => ctx.selectTaker(Number(v)),
+          note: () => {
+            const t = s.taker;
+            return `${t.name}: ${t.style ?? ''}, ${t.foot === 'R' ? 'right' : 'left'}-footed. Accuracy ${t.accuracy.toFixed(2)}, curve ${t.curve.toFixed(2)}, power ${t.power.toFixed(2)}.`;
+          },
+        },
+      ],
+    },
+  ];
+
+  const post: Section[] = [
+    {
+      title: 'Input',
+      rows: [
+        { kind: 'toggle', label: 'Mouse aiming', ...client('mouseAim'), note: 'Click the pitch to capture the mouse: move = reticle, right button = contact point, left button = shoot. Esc frees it.' },
+        {
+          kind: 'range', label: 'Mouse sensitivity', min: SENS_MIN, max: SENS_MAX, step: 0.05,
+          ...client('mouseSensitivity'), fmt: (v) => `${v.toFixed(2)}×`,
+        },
+      ],
+    },
+    {
+      title: 'Audio',
+      rows: [
+        { kind: 'range', label: 'Master volume', min: 0, max: 1, step: 0.01, ...client('masterVolume'), fmt: (v) => `${Math.round(v * 100)}%` },
+        { kind: 'range', label: 'Crowd volume', min: 0, max: 1, step: 0.01, ...client('crowdVolume'), fmt: (v) => `${Math.round(v * 100)}%` },
+        { kind: 'toggle', label: 'Mute', ...client('muted') },
+      ],
+    },
+    {
+      title: 'Graphics',
+      rows: [
+        {
+          kind: 'segmented', label: 'Quality',
+          options: [{ label: 'Low', value: 'low' }, { label: 'Medium', value: 'medium' }, { label: 'High', value: 'high' }],
+          get: () => P.quality, set: (v) => { P.quality = v as Quality; ctx.apply(); },
+          note: 'Low: no shadows, 1× pixels. Medium: shadows, up to 1.5× pixels. High: sharp shadows, up to 2× pixels.',
+        },
+        {
+          kind: 'segmented', label: 'Time of day',
+          options: [{ label: 'Day', value: 'day' }, { label: 'Dusk', value: 'dusk' }, { label: 'Night', value: 'night' }],
+          get: () => P.timeOfDay, set: (v) => { P.timeOfDay = v as TimeOfDay; ctx.apply(); },
+          note: 'Dusk and night switch the stadium floodlights on.',
+        },
+      ],
+    },
+    {
+      title: 'Camera',
+      rows: [
+        {
+          kind: 'range', label: 'Camera distance', min: 0.6, max: 1.8, step: 0.05,
+          ...client('cameraDistance'), fmt: (v) => `${v.toFixed(2)}×`,
+          note: 'How far behind the ball the camera sits (C still toggles near / far).',
+        },
+      ],
+    },
+    {
+      title: 'Replay',
+      rows: [
+        {
+          kind: 'segmented', label: 'Replay speed',
+          options: REPLAY_SPEEDS.map((v) => ({ label: `${v}×`, value: String(v) })),
+          get: () => String(P.replaySpeed), set: (v) => { P.replaySpeed = Number(v); ctx.apply(); },
+          note: 'Press V after a kick for an instant replay from several cameras.',
+        },
+        { kind: 'toggle', label: 'Auto-replay goals', ...client('autoReplay') },
+      ],
+    },
+  ];
+
   const taker = (k: 'accuracy' | 'curve' | 'power'): Pick<RangeRow, 'get' | 'set'> => ({
     get: () => s.taker[k],
     set: (v) => {
@@ -82,6 +241,7 @@ export function buildSettingsPanel(
   });
 
   const sections: Section[] = [
+    ...pre,
     {
       title: 'Free kick',
       rows: [
@@ -223,7 +383,7 @@ export function buildSettingsPanel(
       ],
     },
     {
-      title: 'Taker',
+      title: 'Taker tuning',
       rows: [
         { kind: 'range', label: 'Accuracy', min: 0, max: 1, step: 0.01, ...taker('accuracy'), fmt: (v) => v.toFixed(2) },
         { kind: 'range', label: 'Curve', min: 0, max: 1.5, step: 0.01, ...taker('curve'), fmt: (v) => v.toFixed(2) },
@@ -240,6 +400,7 @@ export function buildSettingsPanel(
         },
       ],
     },
+    ...post,
     {
       title: '',
       rows: [
@@ -247,6 +408,8 @@ export function buildSettingsPanel(
           kind: 'button', label: 'Defaults', text: 'Reset all settings',
           onClick: () => {
             Object.assign(s.settings, defaultSettings());
+            s.difficulty = 'normal';
+            P.difficulty = 'normal';
             applySettings(s);
             onReset();
           },
@@ -266,8 +429,27 @@ export function buildSettingsPanel(
     return e;
   };
 
+  // Sections that are rarely touched start collapsed; the player's own choice is remembered.
+  const COLLAPSED_BY_DEFAULT = ['Wall extras', 'Taker tuning', 'Input', 'Audio', 'Graphics', 'Camera', 'Replay', 'Aids', 'Run-up', 'Conditions'];
   for (const sec of sections) {
-    if (sec.title) root.append(mk('h3', '', sec.title));
+    const wrap = mk('section', 'sec');
+    const body = mk('div', 'sec-body');
+    if (sec.title) {
+      const h = mk('button', 'sec-title', sec.title);
+      h.type = 'button';
+      const collapsed = () => P.collapsed[sec.title] ?? COLLAPSED_BY_DEFAULT.includes(sec.title);
+      const apply = () => wrap.classList.toggle('collapsed', collapsed());
+      h.addEventListener('click', () => {
+        P.collapsed[sec.title] = !collapsed();
+        apply();
+        ctx.apply();
+        h.blur();
+      });
+      apply();
+      wrap.append(h);
+    }
+    wrap.append(body);
+    root.append(wrap);
     for (const r of sec.rows) {
       const row = mk('div', 'set-row' + (r.soon ? ' soon' : ''));
       const head = mk('div', 'set-head');
@@ -330,8 +512,15 @@ export function buildSettingsPanel(
         row.classList.add('button-row');
         head.append(b);
       }
-      if (r.note) row.append(mk('div', 'set-note', r.note));
-      root.append(row);
+      if (r.note) {
+        const n = mk('div', 'set-note', typeof r.note === 'string' ? r.note : r.note());
+        row.append(n);
+        if (typeof r.note === 'function') {
+          const fn = r.note;
+          syncs.push(() => (n.textContent = fn()));
+        }
+      }
+      body.append(row);
     }
   }
 

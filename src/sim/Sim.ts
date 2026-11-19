@@ -10,8 +10,10 @@ import { RngState, rngRange } from './math/rng';
 import { V3, clamp, copy, lerp, v3 } from './math/vec3';
 import { Shot, ShotParams, Taker, computeShot } from './ShotModel';
 import { AiParams, KeeperAi, effectiveKeeperAi } from './ai';
+import { ChallengeDef, ChallengeRun, medalFor, scoreShot } from './challenge';
+import { DifficultyName, DifficultyPreset } from './presets';
 import { KeeperState, keeperOnStrike, keeperStep, layoutKeeper } from './Keeper';
-import { SimSettings, defaultSettings, windVector } from './settings';
+import { SimSettings, defaultSettings, sanitizeSettings, windVector } from './settings';
 import {
   WallRolls,
   WallState,
@@ -22,6 +24,7 @@ import {
   updateWallFlight,
   updateWallLift,
   updateWallRunup,
+  wallDummyJump,
   wallEncroaching,
   wallShouldJump,
 } from './Wall';
@@ -29,6 +32,7 @@ import {
 export type Phase = 'aim' | 'charge' | 'runup' | 'flight' | 'result';
 export type ResultType = 'goal' | 'wide' | 'over' | 'miss' | 'saved' | 'retake';
 export type KeeperTouch = 'hold' | 'touch';
+export type Mode = 'free' | 'practice' | 'challenge';
 
 export interface InputState {
   /** Reticle velocity axes, -1..1 (+x right, +y up). */
@@ -46,6 +50,11 @@ export interface InputState {
   /** Run-up arc angle / distance axes, -1..1 (wider/longer = +1). */
   runupAngle: number;
   runupDist: number;
+  /** Mouse: reticle movement in metres this frame (applied once, not per sim step). */
+  aimDeltaX: number;
+  aimDeltaY: number;
+  /** Hold at the release to send a dummy runner over the ball first. */
+  dummy: boolean;
 }
 
 export const emptyInput = (): InputState => ({
@@ -61,6 +70,9 @@ export const emptyInput = (): InputState => ({
   newSpot: false,
   runupAngle: 0,
   runupDist: 0,
+  aimDeltaX: 0,
+  aimDeltaY: 0,
+  dummy: false,
 });
 
 export type SimEvent =
@@ -75,6 +87,8 @@ export interface SimConfig {
   shot: ShotParams;
   ai: AiParams;
   takers: Taker[];
+  challenges: ChallengeDef[];
+  presets: Record<DifficultyName, DifficultyPreset>;
 }
 
 export interface ShotPreview {
@@ -115,6 +129,20 @@ export interface SimState {
   /** Duration of the current run-up animation/clock (scales with distance). */
   runupDur: number;
 
+  /** Free kicks (random spots), practice (same spot, instant retries) or a scored skill challenge. */
+  mode: Mode;
+  challenge: ChallengeRun | null;
+  takerIndex: number;
+  difficulty: DifficultyName | 'custom';
+  /** Added to the taker's accuracy (difficulty preset). */
+  accuracyBonus: number;
+  /** A dummy runner goes over the ball first in this attempt. */
+  dummy: boolean;
+  dummyAt: number;
+  dummyDone: boolean;
+  /** Where the ball crossed the goal plane (z = 0) in this attempt, or null. */
+  crossing: { x: number; y: number } | null;
+
   settings: SimSettings;
   /** Keeper tuning in force: base values + the selected keeper type. */
   keeperAi: KeeperAi;
@@ -134,6 +162,10 @@ export interface SimState {
     keeper: KeeperTouch | null;
     /** The ball stayed in the box: a follow-up shot comes next. */
     rebound: boolean;
+    /** Challenge mode: points scored by this attempt and the ring crossed (-1 = none). */
+    points: number;
+    ring: number;
+    crossing: { x: number; y: number } | null;
   } | null;
   woodwork: 'post' | 'bar' | null;
   hitWall: boolean;
@@ -174,6 +206,15 @@ export function createSim(cfg: SimConfig, seed = 1234): SimState {
     preview: null,
     previewKey: '',
     showPath: false,
+    mode: 'free',
+    challenge: null,
+    takerIndex: 0,
+    difficulty: 'normal',
+    accuracyBonus: 0,
+    dummy: false,
+    dummyAt: 0,
+    dummyDone: false,
+    crossing: null,
     runup: { angle: cfg.shot.runupAngleDefault, dist: cfg.shot.runupDistDefault },
     runupDur: cfg.shot.runupTime,
     settings: { ...defaultSettings(), ...cfg.settings },
@@ -230,6 +271,9 @@ function resetAttempt(s: SimState): void {
   s.keeperTouch = null;
   s.deflectT = null;
   s.encroached = false;
+  s.dummy = false;
+  s.dummyDone = false;
+  s.crossing = null;
   s.netActive = false;
   s.flightT = 0;
   s.keeperAi = effectiveKeeperAi(s.cfg.ai, s.settings.keeperType);
@@ -257,6 +301,52 @@ export function applySettings(s: SimState): void {
   }
 }
 
+/** Pick a taker from the roster; their preferred foot comes with them. */
+export function selectTaker(s: SimState, index: number): void {
+  const n = s.cfg.takers.length;
+  s.takerIndex = ((index % n) + n) % n;
+  s.taker = s.cfg.takers[s.takerIndex];
+  s.foot = s.taker.foot;
+  s.previewKey = '';
+}
+
+/** Apply a difficulty preset (keeper, wall, wind, accuracy). */
+export function applyPreset(s: SimState, name: DifficultyName): void {
+  const p = s.cfg.presets[name];
+  Object.assign(s.settings, sanitizeSettings({ ...s.settings, ...p.settings }));
+  s.accuracyBonus = p.accuracyBonus;
+  s.difficulty = name;
+  applySettings(s);
+}
+
+function endChallenge(s: SimState): void {
+  if (s.challenge) Object.assign(s.settings, s.challenge.backup);
+  s.challenge = null;
+}
+
+/** Start (or restart) a challenge: its rules override the settings until you leave the mode. */
+export function startChallenge(s: SimState, index: number): void {
+  const defs = s.cfg.challenges;
+  const i = ((index % defs.length) + defs.length) % defs.length;
+  const def = defs[i];
+  const backup = s.challenge ? s.challenge.backup : { ...s.settings };
+  if (s.challenge) Object.assign(s.settings, backup);
+  Object.assign(s.settings, def.settings);
+  s.mode = 'challenge';
+  s.challenge = { index: i, def, taken: 0, points: 0, log: [], done: false, medal: null, backup };
+  setSpot(s, def.spot.x, def.spot.z);
+}
+
+export function setMode(s: SimState, mode: Mode, challengeIndex = 0): void {
+  if (mode === 'challenge') {
+    startChallenge(s, challengeIndex);
+    return;
+  }
+  endChallenge(s);
+  s.mode = mode;
+  resetAttempt(s);
+}
+
 export function randomSpot(s: SimState): { x: number; z: number } {
   for (let i = 0; i < 50; i++) {
     const d = rngRange(s.rng, 19, 32);
@@ -282,7 +372,7 @@ function shotRequest(s: SimState, power: number, withRng: boolean) {
     power,
     driven: s.driven,
     low: s.low,
-    taker: s.taker,
+    taker: { ...s.taker, accuracy: clamp(s.taker.accuracy + s.accuracyBonus, 0, 1) },
     runup: s.runup,
     // The solver never uses wind; it is only passed so the optional path aid shows the real drift.
     wind: s.showPath ? windVector(s.settings) : undefined,
@@ -338,6 +428,7 @@ function reboundAvailable(s: SimState): boolean {
   const b = s.ball;
   const speed = Math.hypot(b.vel.x, b.vel.y, b.vel.z);
   return (
+    s.mode !== 'challenge' &&
     s.settings.rebounds &&
     s.settings.keeperPresent &&
     s.reboundCount < ai.maxRebounds &&
@@ -361,7 +452,20 @@ function finish(s: SimState, type: ResultType): void {
     type = 'saved';
   }
   const rebound = type === 'saved' && s.keeperTouch === 'touch' && reboundAvailable(s);
-  s.result = { type, woodwork: s.woodwork, wall: s.hitWall, keeper: s.keeperTouch, rebound };
+  let points = 0;
+  let ring = -1;
+  const ch = s.challenge;
+  if (ch && !ch.done && type !== 'retake') {
+    ({ points, ring } = scoreShot(ch.def, s.crossing, type));
+    ch.taken++;
+    ch.points += points;
+    ch.log.push({ type, points, ring });
+    if (ch.taken >= ch.def.shots) {
+      ch.done = true;
+      ch.medal = medalFor(ch.def, ch.points);
+    }
+  }
+  s.result = { type, woodwork: s.woodwork, wall: s.hitWall, keeper: s.keeperTouch, rebound, points, ring, crossing: s.crossing };
   if (type === 'goal') {
     s.stats.goals++;
     s.events.push({ type: 'goal' });
@@ -403,8 +507,8 @@ export function step(s: SimState, input: InputState, dt: number): void {
 
   const adjusting = s.phase === 'aim' || s.phase === 'charge';
   if (adjusting) {
-    s.aim.x = clamp(s.aim.x + input.aimX * SP.aimSpeedX * dt, -7, 7);
-    s.aim.y = clamp(s.aim.y + input.aimY * SP.aimSpeedY * dt, 0.1, 4);
+    s.aim.x = clamp(s.aim.x + input.aimX * SP.aimSpeedX * dt + input.aimDeltaX, -7, 7);
+    s.aim.y = clamp(s.aim.y + input.aimY * SP.aimSpeedY * dt + input.aimDeltaY, 0.1, 4);
     let cx = input.contactX;
     let cy = input.contactY;
     const m = Math.hypot(cx, cy);
@@ -423,7 +527,7 @@ export function step(s: SimState, input: InputState, dt: number): void {
 
   if (s.phase === 'aim') {
     if (edge(input.toggleFoot, s.prev.toggleFoot)) s.foot = s.foot === 'R' ? 'L' : 'R';
-    if (edge(input.newSpot, s.prev.newSpot)) newSpot(s);
+    if (edge(input.newSpot, s.prev.newSpot) && s.mode !== 'challenge') newSpot(s);
     else if (edge(input.shoot, s.prev.shoot)) {
       s.phase = 'charge';
       s.phaseT = 0;
@@ -436,12 +540,22 @@ export function step(s: SimState, input: InputState, dt: number): void {
       s.phase = 'runup';
       s.phaseT = 0;
       s.runupT = 0;
-      // A longer run-up takes longer.
-      s.runupDur = SP.runupTime * (s.runup.dist / SP.runupDistDefault);
+      // A longer run-up takes longer; a dummy runner adds a beat before the real strike.
+      const base = SP.runupTime * (s.runup.dist / SP.runupDistDefault);
+      s.dummy = input.dummy;
+      s.dummyDone = false;
+      s.dummyAt = base;
+      s.runupDur = base + (s.dummy ? SP.dummyDelay : 0);
     }
   } else if (s.phase === 'runup') {
     s.runupT += dt;
     if (s.wall) updateWallRunup(s.wall, s.cfg.ai.wall, s.runupT);
+    if (s.dummy && !s.dummyDone && s.runupT >= s.dummyAt) {
+      // The decoy steps over the ball: part of the wall jumps for it, far too early.
+      s.dummyDone = true;
+      if (s.wall && s.settings.wallJumps) wallDummyJump(s.wall, s.cfg.ai.wall, s.rng);
+    }
+    if (s.wall && s.dummyDone) updateWallLift(s.wall, s.runupT - s.dummyAt);
     if (s.runupT >= s.runupDur && s.pending) {
       const shot = s.pending;
       s.ball.vel = copy(shot.vel);
@@ -452,9 +566,9 @@ export function step(s: SimState, input: InputState, dt: number): void {
       s.ball.wind = windVector(s.settings);
       s.encroached = !!s.wall && wallEncroaching(s.wall, s.cfg.ai.wall);
       if (s.wall && s.settings.wallJumps) {
-        startWallJump(s.wall, s.cfg.ai.wall, s.rng, wallShouldJump(s.ball, s.spot, P, s.cfg.ai.wall));
+        startWallJump(s.wall, s.cfg.ai.wall, s.rng, wallShouldJump(s.ball, s.spot, P, s.cfg.ai.wall), s.dummy ? SP.dummyDelay : 0);
       }
-      if (s.keeper) keeperOnStrike(s.keeper, s.keeperAi, s.rng);
+      if (s.keeper) keeperOnStrike(s.keeper, s.keeperAi, s.rng, s.dummy);
       s.events.push({ type: 'strike', speed: shot.speed });
       s.phase = 'flight';
       s.phaseT = 0;
@@ -473,6 +587,10 @@ export function step(s: SimState, input: InputState, dt: number): void {
 
     const ev: CollisionEvent[] = [];
     stepWorld(s.ball, P, dt, s.netActive, s.wall, s.keeper, s.keeperAi, ev);
+    if (s.crossing === null && s.prevBallPos.z > 0 && s.ball.pos.z <= 0) {
+      const f = s.prevBallPos.z / (s.prevBallPos.z - s.ball.pos.z);
+      s.crossing = { x: lerp(s.prevBallPos.x, s.ball.pos.x, f), y: lerp(s.prevBallPos.y, s.ball.pos.y, f) };
+    }
     for (const e of ev) {
       if (e.type === 'post' || e.type === 'bar') s.woodwork = e.type;
       if (e.type === 'wall') {
@@ -497,11 +615,17 @@ export function step(s: SimState, input: InputState, dt: number): void {
     }
   } else if (s.phase === 'result') {
     const timeUp = s.phaseT > SP.resultTime;
-    if (edge(input.retry, s.prev.retry)) resetAttempt(s);
-    else if (edge(input.newSpot, s.prev.newSpot)) newSpot(s);
+    const ch = s.challenge;
+    if (ch && ch.done) {
+      // The run is over: the summary stays up until you restart (R) or move on (N).
+      if (edge(input.retry, s.prev.retry)) startChallenge(s, ch.index);
+      else if (edge(input.newSpot, s.prev.newSpot)) startChallenge(s, ch.index + 1);
+    } else if (edge(input.retry, s.prev.retry)) resetAttempt(s);
+    else if (edge(input.newSpot, s.prev.newSpot) && s.mode !== 'challenge') newSpot(s);
     else if (timeUp) {
-      if (s.result?.type === 'retake') resetAttempt(s); // same spot, no penalty
+      if (s.result?.type === 'retake' || s.mode === 'challenge') resetAttempt(s); // same spot
       else if (s.result?.rebound && reboundAvailable(s)) startFollowUp(s);
+      else if (s.mode === 'practice') resetAttempt(s);
       else newSpot(s);
     }
   }

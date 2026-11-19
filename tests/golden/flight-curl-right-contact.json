@@ -1,0 +1,664 @@
+{
+ "scenario": {
+  "name": "flight-curl-right-contact",
+  "desc": "Strike on the right of the ball: curls left.",
+  "seed": 42,
+  "settings": {},
+  "spot": {
+   "x": -6,
+   "z": 24
+  },
+  "contact": {
+   "x": 0.8,
+   "y": 0
+  },
+  "power": 0.8200000000000001,
+  "aim": {
+   "x": 1.5,
+   "y": 1.5
+  }
+ },
+ "settings": {
+  "wallEnabled": false,
+  "wallHeight": 1.85,
+  "wallCount": 0,
+  "wallJumps": false,
+  "lyingMan": "off",
+  "encroachment": "off",
+  "rebounds": false,
+  "keeperType": "balanced",
+  "keeperPresent": false,
+  "keeperSkill": 0.7,
+  "windEnabled": false,
+  "windSpeed": 4,
+  "windDirection": 90
+ },
+ "inputs": {
+  "holdSteps": 257,
+  "releaseStep": 258,
+  "totalSteps": 633
+ },
+ "samples": [
+  {
+   "step": 24,
+   "phase": "charge",
+   "ball": [
+    -6,
+    0.11,
+    24
+   ],
+   "vel": [
+    0,
+    0,
+    0
+   ],
+   "spin": [
+    0,
+    0,
+    0
+   ],
+   "keeperHand": null,
+   "wallLiftMax": null
+  },
+  {
+   "step": 48,
+   "phase": "charge",
+   "ball": [
+    -6,
+    0.11,
+    24
+   ],
+   "vel": [
+    0,
+    0,
+    0
+   ],
+   "spin": [
+    0,
+    0,
+    0
+   ],
+   "keeperHand": null,
+   "wallLiftMax": null
+  },
+  {
+   "step": 72,
+   "phase": "charge",
+   "ball": [
+    -6,
+    0.11,
+    24
+   ],
+   "vel": [
+    0,
+    0,
+    0
+   ],
+   "spin": [
+    0,
+    0,
+    0
+   ],
+   "keeperHand": null,
+   "wallLiftMax": null
+  },
+  {
+   "step": 96,
+   "phase": "charge",
+   "ball": [
+    -6,
+    0.11,
+    24
+   ],
+   "vel": [
+    0,
+    0,
+    0
+   ],
+   "spin": [
+    0,
+    0,
+    0
+   ],
+   "keeperHand": null,
+   "wallLiftMax": null
+  },
+  {
+   "step": 120,
+   "phase": "charge",
+   "ball": [
+    -6,
+    0.11,
+    24
+   ],
+   "vel": [
+    0,
+    0,
+    0
+   ],
+   "spin": [
+    0,
+    0,
+    0
+   ],
+   "keeperHand": null,
+   "wallLiftMax": null
+  },
+  {
+   "step": 144,
+   "phase": "charge",
+   "ball": [
+    -6,
+    0.11,
+    24
+   ],
+   "vel": [
+    0,
+    0,
+    0
+   ],
+   "spin": [
+    0,
+    0,
+    0
+   ],
+   "keeperHand": null,
+   "wallLiftMax": null
+  },
+  {
+   "step": 168,
+   "phase": "charge",
+   "ball": [
+    -6,
+    0.11,
+    24
+   ],
+   "vel": [
+    0,
+    0,
+    0
+   ],
+   "spin": [
+    0,
+    0,
+    0
+   ],
+   "keeperHand": null,
+   "wallLiftMax": null
+  },
+  {
+   "step": 192,
+   "phase": "charge",
+   "ball": [
+    -6,
+    0.11,
+    24
+   ],
+   "vel": [
+    0,
+    0,
+    0
+   ],
+   "spin": [
+    0,
+    0,
+    0
+   ],
+   "keeperHand": null,
+   "wallLiftMax": null
+  },
+  {
+   "step": 216,
+   "phase": "charge",
+   "ball": [
+    -6,
+    0.11,
+    24
+   ],
+   "vel": [
+    0,
+    0,
+    0
+   ],
+   "spin": [
+    0,
+    0,
+    0
+   ],
+   "keeperHand": null,
+   "wallLiftMax": null
+  },
+  {
+   "step": 240,
+   "phase": "charge",
+   "ball": [
+    -6,
+    0.11,
+    24
+   ],
+   "vel": [
+    0,
+    0,
+    0
+   ],
+   "spin": [
+    0,
+    0,
+    0
+   ],
+   "keeperHand": null,
+   "wallLiftMax": null
+  },
+  {
+   "step": 264,
+   "phase": "runup",
+   "ball": [
+    -6,
+    0.11,
+    24
+   ],
+   "vel": [
+    0,
+    0,
+    0
+   ],
+   "spin": [
+    0,
+    0,
+    0
+   ],
+   "keeperHand": null,
+   "wallLiftMax": null
+  },
+  {
+   "step": 288,
+   "phase": "runup",
+   "ball": [
+    -6,
+    0.11,
+    24
+   ],
+   "vel": [
+    0,
+    0,
+    0
+   ],
+   "spin": [
+    0,
+    0,
+    0
+   ],
+   "keeperHand": null,
+   "wallLiftMax": null
+  },
+  {
+   "step": 312,
+   "phase": "runup",
+   "ball": [
+    -6,
+    0.11,
+    24
+   ],
+   "vel": [
+    0,
+    0,
+    0
+   ],
+   "spin": [
+    0,
+    0,
+    0
+   ],
+   "keeperHand": null,
+   "wallLiftMax": null
+  },
+  {
+   "step": 336,
+   "phase": "runup",
+   "ball": [
+    -6,
+    0.11,
+    24
+   ],
+   "vel": [
+    0,
+    0,
+    0
+   ],
+   "spin": [
+    0,
+    0,
+    0
+   ],
+   "keeperHand": null,
+   "wallLiftMax": null
+  },
+  {
+   "step": 360,
+   "phase": "runup",
+   "ball": [
+    -6,
+    0.11,
+    24
+   ],
+   "vel": [
+    0,
+    0,
+    0
+   ],
+   "spin": [
+    0,
+    0,
+    0
+   ],
+   "keeperHand": null,
+   "wallLiftMax": null
+  },
+  {
+   "step": 384,
+   "phase": "runup",
+   "ball": [
+    -6,
+    0.11,
+    24
+   ],
+   "vel": [
+    0,
+    0,
+    0
+   ],
+   "spin": [
+    0,
+    0,
+    0
+   ],
+   "keeperHand": null,
+   "wallLiftMax": null
+  },
+  {
+   "step": 408,
+   "phase": "flight",
+   "ball": [
+    -5.19351136344697,
+    0.5881404926898814,
+    21.95938885836556
+   ],
+   "vel": [
+    10.408765726508701,
+    5.91521635952826,
+    -26.880380547034715
+   ],
+   "spin": [
+    0,
+    39.30411097083785,
+    0
+   ],
+   "keeperHand": null,
+   "wallLiftMax": null
+  },
+  {
+   "step": 432,
+   "phase": "flight",
+   "ball": [
+    -4.1964039774075905,
+    1.1200047037329992,
+    19.313229429237925
+   ],
+   "vel": [
+    9.545016932799685,
+    4.731102850786278,
+    -26.052622648764444
+   ],
+   "spin": [
+    0,
+    38.91302853233682,
+    0
+   ],
+   "keeperHand": null,
+   "wallLiftMax": null
+  },
+  {
+   "step": 456,
+   "phase": "flight",
+   "ball": [
+    -3.2823191443906423,
+    1.5360572862233908,
+    16.747028970687794
+   ],
+   "vel": [
+    8.74697373196804,
+    3.597913690517396,
+    -25.27996514920485
+   ],
+   "spin": [
+    0,
+    38.525837429116656,
+    0
+   ],
+   "keeperHand": null,
+   "wallLiftMax": null
+  },
+  {
+   "step": 480,
+   "phase": "flight",
+   "ball": [
+    -2.445067495136799,
+    1.8410874592891886,
+    14.255630226878004
+   ],
+   "vel": [
+    8.007215415074075,
+    2.5097563009101327,
+    -24.555525514159797
+   ],
+   "spin": [
+    0,
+    38.142498941744364,
+    0
+   ],
+   "keeperHand": null,
+   "wallLiftMax": null
+  },
+  {
+   "step": 504,
+   "phase": "flight",
+   "ball": [
+    -1.6791445224028527,
+    2.0393437204847715,
+    11.834515433031893
+   ],
+   "vel": [
+    7.319429930531695,
+    1.461680333712073,
+    -23.87336613779085
+   ],
+   "spin": [
+    0,
+    37.762974736051795,
+    0
+   ],
+   "keeperHand": null,
+   "wallLiftMax": null
+  },
+  {
+   "step": 528,
+   "phase": "flight",
+   "ball": [
+    -0.9796295973625684,
+    2.1346201439621946,
+    9.479720230842016
+   ],
+   "vel": [
+    6.678223581082759,
+    0.44952507890701876,
+    -23.228332703653937
+   ],
+   "spin": [
+    0,
+    37.387226859302054,
+    0
+   ],
+   "keeperHand": null,
+   "wallLiftMax": null
+  },
+  {
+   "step": 552,
+   "phase": "flight",
+   "ball": [
+    -0.34210199800319024,
+    2.1303290386525817,
+    7.1877619490757
+   ],
+   "vel": [
+    6.078969354765367,
+    -0.5302021808140366,
+    -22.61592701814619
+   ],
+   "spin": [
+    0,
+    37.015217736394376,
+    0
+   ],
+   "keeperHand": null,
+   "wallLiftMax": null
+  },
+  {
+   "step": 576,
+   "phase": "flight",
+   "ball": [
+    0.23742944147260345,
+    2.029562668388233,
+    4.955579212307536
+   ],
+   "vel": [
+    5.517684884540109,
+    -1.4804243617822774,
+    -22.03220648994968
+   ],
+   "spin": [
+    0,
+    36.646910166106466,
+    0
+   ],
+   "keeperHand": null,
+   "wallLiftMax": null
+  },
+  {
+   "step": 600,
+   "phase": "flight",
+   "ball": [
+    0.7625856702830083,
+    1.8351460843723233,
+    2.7804805219328603
+   ],
+   "vel": [
+    4.990933299459608,
+    -2.4035749544166913,
+    -21.473704348614813
+   ],
+   "spin": [
+    0,
+    36.28226731737436,
+    0
+   ],
+   "keeperHand": null,
+   "wallLiftMax": null
+  },
+  {
+   "step": 624,
+   "phase": "flight",
+   "ball": [
+    1.2366677726918915,
+    1.5496826281272085,
+    0.6600999719121963
+   ],
+   "vel": [
+    4.4957418769779665,
+    -3.30166485756709,
+    -20.937366067980534
+   ],
+   "spin": [
+    0,
+    35.92125272560932,
+    0
+   ],
+   "keeperHand": null,
+   "wallLiftMax": null
+  }
+ ],
+ "final": {
+  "phase": "result",
+  "atResult": {
+   "result": {
+    "type": "goal",
+    "woodwork": null,
+    "wall": false,
+    "keeper": null,
+    "rebound": false,
+    "points": 0,
+    "ring": -1,
+    "crossing": {
+     "x": 1.3765720627527995,
+     "y": 1.440728759776205
+    }
+   },
+   "stats": {
+    "attempts": 1,
+    "goals": 1
+   }
+  },
+  "result": {
+   "type": "goal",
+   "woodwork": null,
+   "wall": false,
+   "keeper": null,
+   "rebound": false,
+   "points": 0,
+   "ring": -1,
+   "crossing": {
+    "x": 1.3765720627527995,
+    "y": 1.440728759776205
+   }
+  },
+  "stats": {
+   "attempts": 1,
+   "goals": 1
+  },
+  "rng": -63941155,
+  "ball": {
+   "pos": [
+    1.40190625645648,
+    1.419659991178824,
+    -0.1213684179610659
+   ],
+   "vel": [
+    4.31764455135027,
+    -3.6323339160284194,
+    -20.7413930572431
+   ],
+   "spin": [
+    0,
+    35.78680028377811,
+    0
+   ]
+  },
+  "flightT": 1.0124999999999977,
+  "encroached": false,
+  "crossing": {
+   "x": 1.3765720627527995,
+   "y": 1.440728759776205
+  },
+  "spot": [
+   -6,
+   0,
+   24
+  ],
+  "spotId": 1,
+  "followUp": false,
+  "reboundCount": 0,
+  "keeperTouch": null,
+  "woodwork": null,
+  "hitWall": false,
+  "challenge": null
+ }
+}

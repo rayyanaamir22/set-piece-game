@@ -35,5 +35,6 @@
   "curlWide": 1.25,
   "distPower": 0.05,
   "knuckleMaxAngle": 45,
-  "lowElevation": 0.6
+  "lowElevation": 0.6,
+  "dummyDelay": 0.4
 }

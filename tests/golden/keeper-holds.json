@@ -1,0 +1,123 @@
+{
+ "scenario": {
+  "name": "keeper-holds",
+  "desc": "A gentle ball at his chest is held.",
+  "seed": 42,
+  "settings": {
+   "keeperPresent": true,
+   "keeperSkill": 0.7
+  },
+  "spot": {
+   "x": 0,
+   "z": 24
+  },
+  "contact": {
+   "x": 0,
+   "y": 0
+  },
+  "power": 0,
+  "aim": {
+   "x": 0,
+   "y": 1
+  },
+  "force": {
+   "ball": {
+    "x": 0,
+    "y": 1.3,
+    "z": 2
+   },
+   "vel": {
+    "x": 0,
+    "y": 0,
+    "z": -9
+   }
+  }
+ },
+ "settings": {
+  "wallEnabled": false,
+  "wallHeight": 1.85,
+  "wallCount": 0,
+  "wallJumps": false,
+  "lyingMan": "off",
+  "encroachment": "off",
+  "rebounds": false,
+  "keeperType": "balanced",
+  "keeperPresent": true,
+  "keeperSkill": 0.7,
+  "windEnabled": false,
+  "windSpeed": 4,
+  "windDirection": 90
+ },
+ "inputs": {
+  "holdSteps": 0,
+  "releaseStep": 0,
+  "totalSteps": 23
+ },
+ "samples": [],
+ "final": {
+  "phase": "result",
+  "atResult": {
+   "result": {
+    "type": "saved",
+    "woodwork": null,
+    "wall": false,
+    "keeper": "hold",
+    "rebound": false,
+    "points": 0,
+    "ring": -1,
+    "crossing": null
+   },
+   "stats": {
+    "attempts": 0,
+    "goals": 0
+   }
+  },
+  "result": {
+   "type": "saved",
+   "woodwork": null,
+   "wall": false,
+   "keeper": "hold",
+   "rebound": false,
+   "points": 0,
+   "ring": -1,
+   "crossing": null
+  },
+  "stats": {
+   "attempts": 0,
+   "goals": 0
+  },
+  "rng": 42,
+  "ball": {
+   "pos": [
+    0,
+    1.2552706134936826,
+    1.15
+   ],
+   "vel": [
+    0,
+    -0.5,
+    0.3
+   ],
+   "spin": [
+    0,
+    0,
+    0
+   ]
+  },
+  "flightT": 0.09583333333333333,
+  "encroached": false,
+  "crossing": null,
+  "spot": [
+   0,
+   0,
+   24
+  ],
+  "spotId": 1,
+  "followUp": false,
+  "reboundCount": 0,
+  "keeperTouch": "hold",
+  "woodwork": null,
+  "hitWall": false,
+  "challenge": null
+ }
+}

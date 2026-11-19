@@ -21,9 +21,16 @@ A shooting-only free-kick game whose mechanics match EA FIFA / FC free kicks (FC
 | 6b Keeper extras: gloves + roll animation, rebounds / follow-up shots, early guess, keeper types | done (keeper replay camera moves to step 10) |
 | 7 Wind: drag and Magnus act on air-relative velocity, HUD arrow, settings | done |
 | 8 Run-up adjustment: arc angle + length, power/curl effects, knuckle rule, marker, controls | done |
-| 9-13 | see "Remaining Phase A steps" below |
+| 9 Mouse aiming: pointer lock (or drag), right button = contact point, left button = shoot, sensitivity slider | done |
+| 10 Presentation: vanishing spray, instant replay (60 Hz ring buffer, 4-5 cameras incl. a keeper cam for saves, slow-mo), synthesised audio with volume sliders, better crowd + floodlights, day/dusk/night, graphics quality | done |
+| 11 Modes: free kicks, practice (instant retries, click to place the ball), 5 skill challenges with rings and bronze/silver/gold, 6-taker roster, dummy run-up | done |
+| 12 Settings polish: difficulty presets, full key remapping, camera distance, collapsible sections, phone/touch layout for the menus | done |
+| 13 Frozen sim: 28 golden fixtures (`npm run golden`) and a generated porting contract `docs/porting-contract.md` (`npm run contract`) | done |
+
+**Phase A is complete.** Phase B starts from `native/plan.md`.
 
 ### Decisions made while building
+- **Phase B lives in this repo** (a monorepo with `native/` alongside the web app), so that `data/*.json`, `tests/golden/` and `assets/` are shared. It is written in C++20 in a C-style and targets OpenGL 4.1 core. Full plan: [native/plan.md](native/plan.md).
 - **Fixed step is 240 Hz, not 120 Hz.** At 34 m/s the ball moves 0.14 m per step, which is under the post radius, so it can't tunnel through a post.
 - **The reticle is where the ball arrives.** A shooting-method solver (`ShotModel.computeShot`) picks the launch angles so the spinning, dragged ball reaches the reticle. The contact point therefore decides the *shape* of the path (curl round a wall, dip over it) and the arrow shows the initial direction, which diverges from the reticle when there's curl. Timing and taker accuracy add error on top. The solver ignores the wall, so the player has to choose a path that clears it.
 - **Contact point follows the physics.** Striking the right of the ball curls it left, striking the top dips it, and a dead-centre strike at high power is a knuckleball (low spin plus a seeded lateral wobble).
@@ -37,6 +44,14 @@ A shooting-only free-kick game whose mechanics match EA FIFA / FC free kicks (FC
 - **Rebounds:** a parry that ends inside the box (|x| <= 18, 1.5 <= z <= 16) and slower than 9 m/s becomes a follow-up shot from where the ball lies (no wall, keeper back on his feet), up to 2 in a row.
 - **Wind** is steady (no gusts). The aim solver ignores it, so you have to allow for it; the keeper and the wall AI do see it, and the "Show predicted path" aid includes it. Wind adds to the ball's velocity relative to the air, so a headwind also raises drag.
 - **Run-up** multipliers are normalised so the default (35°, 3.5 m) is exactly neutral; a straight approach gives up to +6% power and -30% curl, a very wide one -10% power and +25% curl, and past 45° a centre strike is no longer a knuckleball.
+- **Mouse aiming** captures the pointer when you click the pitch (move = reticle, right button + move = contact point, left button = shoot, Esc frees it). Where pointer lock is unavailable, dragging works instead. Mouse movement reaches the sim as `aimDeltaX/Y` once per frame, so frame rate does not change how far the reticle moves.
+- **Replays record renderer-ready frames, not sim snapshots:** 60 Hz, a 12 s ring buffer, from the start of the run-up to 1.2 s after the result. Playback interpolates, so slow motion is smooth, and it re-fires the recorded events (net ripple, sounds). The sim is frozen while you watch, so the result timer does not run.
+- **Audio is synthesised** (Web Audio, no files): crowd murmur that rises as the ball nears goal, a ringing post and bar, net, wall and keeper sounds, a referee whistle, and goal/save/miss crowd reactions. `cuesFor` maps sim events to sounds and is unit-tested; the synthesis itself is not.
+- **Challenges override your rules while they run** (wall, keeper, wind…) and restore them when you leave, so your own settings are never lost. Only goals score: the best ring the ball crossed the line through wins its points, any other goal scores `goalPoints`. Rings must fit inside the frame (a test enforces it).
+- **Dummy run-up:** hold the dummy key at the release. A decoy runs over the ball, the real strike comes 0.4 s later, ~70% of the wall jumps for the decoy (and is back down when the ball arrives), and a weak keeper bites more often.
+- **Difficulty presets** set keeper skill and type, wall height/jumps/extras, wind and an accuracy bonus together; editing any of those afterwards marks the difficulty "custom".
+- **Client preferences (mouse, audio, graphics, camera, keys, mode, roster, medals) are separate from the sim settings** (`setpiece.client.v1` vs `setpiece.settings.v1`), because they are about you, not about the rules.
+- **The porting contract is generated from the TypeScript** and a test fails if it is stale, so it cannot drift from the code. Golden fixtures are produced by the TS sim and replayed by `tests/golden.test.ts`; the native port must reproduce them (positions within 1 cm, results and RNG state exactly).
 - **Settings live in `SimState.settings` (`src/sim/settings.ts`)**, so the native build can load the same values. Anything not simulated yet is shown greyed out with a "soon" badge, so the final settings screen is already in place.
 - **Controls:** keyboard + gamepad are in. Mouse aim is not yet.
 
@@ -56,33 +71,22 @@ A shooting-only free-kick game whose mechanics match EA FIFA / FC free kicks (FC
 | Keeper type (balanced, quick, tall, strong), rebounds | segmented, bool | active |
 | Wind on/off, speed (0-15 m/s), direction (0-360°) | bool + sliders | active |
 | Run-up angle (0-75°) and length (2-6 m) | sliders | active |
+| Game mode (free / practice / challenge), challenge picker, difficulty preset, taker roster | segmented | active |
+| Mouse aiming + sensitivity, master/crowd volume, mute, quality (low/medium/high), time of day, camera distance, replay speed, auto-replay goals | client prefs | active |
+| Key bindings (every action) | Controls panel | active |
 
-### Remaining Phase A steps
-Each step lists what to build, the setting that controls it, and how it is tested.
+### Phase A: what was built in steps 9-13
+- **9 Mouse aiming:** `src/input/mouse.ts` (pure scaling), pointer lock and drag in `src/input/Input.ts`, sensitivity in settings.
+- **10 Presentation:** `src/render/Spray.ts`, `src/replay/Replay.ts` (recorder, player, cameras), `src/audio/` (cues + Web Audio synthesis), the new `src/render/Stadium.ts` (crowd, floodlights, time of day), quality in `GameView.setQuality`.
+- **11 Modes:** `Mode`, `startChallenge` and scoring in `src/sim/Sim.ts` / `src/sim/challenge.ts`, `data/challenges.json`, the 6-taker `data/takers.json`, the dummy run in `Wall.ts` / `Keeper.ts` / `DecoyView`.
+- **12 Settings and UI:** `src/prefs.ts`, `src/input/keymap.ts`, `src/hud/ControlsPanel.ts` (live rebinding), collapsible sections, `data/presets.json`, the small-screen CSS.
+- **13 Frozen sim:** `tests/goldenRunner.ts`, `tests/golden.test.ts`, `tests/golden/*.json`, `tests/contract.test.ts`, `docs/porting-contract.md`.
 
-(Steps 5c, 6b, 7 and 8 are done. One leftover from 6b, the keeper-specific replay camera, belongs to step 10.)
-
-9. **Mouse aiming**
-   - Drag or pointer-lock to move the reticle and contact point.
-   - Sensitivity slider in settings.
-10. **Presentation**
-    - Replay cameras, including a keeper-focused one for saves.
-    - Vanishing spray line for the ball spot and the 9.15 m wall line.
-    - Goal replay from 2-3 cameras (ring buffer of sim snapshots).
-    - Audio: crowd, strike, post, net and whistle sounds with a volume slider.
-    - Better crowd texture and some stadium lighting.
-    - Graphics quality setting (shadows, pixel ratio).
-11. **Modes**
-    - Practice arena (ball placement already exists in settings).
-    - Skill challenges with target rings and bronze/silver/gold scoring.
-    - Taker roster picker.
-    - Dummy run-up.
-12. **Settings and UI polish**
-    - Difficulty presets (accuracy, keeper skill, wall).
-    - Key remapping.
-    - Camera distance slider.
-    - Touch/mobile layout for the menu.
-13. **Freeze the simulation:** record golden trajectories and outcomes for a fixed set of shots, then write down the `Sim` state and input structs as the porting contract for Phase B. Includes wall and keeper shots.
+### Known limits of Phase A (deliberately left for Phase B)
+- Placeholder low-poly figures and a procedural crowd; no skeletal animation.
+- No on-screen touch controls: the menus are phone-friendly, but you still need a keyboard, mouse or gamepad to play.
+- Sound is synthesised and basic; there is no spatial audio.
+- Wind is steady (no gusts).
 
 ## 1. Tech choice
 **Phase A: Three.js + TypeScript, bundled with Vite (no Next.js, no React).** The game has one ball, about 6 to 8 low-poly figures and a static stadium. That workload is small for WebGL. The hard part is ball physics and game feel, and the web gives the fastest loop for tuning those: hot reload, a debug panel, and a link anyone can play. A plain Vite app keeps the page to one canvas with a lightweight DOM overlay for the on-screen display. A framework only becomes worth it if the menus get complex.
@@ -217,13 +221,8 @@ tests/                      Vitest unit tests + golden/*.json trajectories
 ```
 The simulation steps once per frame through `Sim.step(input, dt)`, with input passed in as a plain struct. That makes it deterministic and testable, and it maps one-to-one onto a C `sim_step(Sim*, const Input*, float dt)`.
 
-### Phase B layout (for reference)
-`native/` holds the C/C++ version:
-- `sim/` is a direct port of `src/sim/`.
-- `render/` is OpenGL 4.1 with shadow maps, PBR and post-processing.
-- `platform/` contains GLFW or SDL3, ImGui and miniaudio.
-
-It builds with CMake, loads the same `data/` and is tested against `tests/golden/`.
+### Phase B layout
+Phase B lives in `native/` in this repo. See [native/plan.md](native/plan.md).
 
 ## 6. Milestones
 ### Phase A: web
@@ -239,10 +238,7 @@ It builds with CMake, loads the same `data/` and is tested against `tests/golden
 6-13. See "Remaining Phase A steps" at the top of this file.
 
 ### Phase B: native OpenGL
-11. **Platform shell:** CMake, a GLFW or SDL3 window, an OpenGL 4.1 context, ImGui, the fixed-step loop and gamepad input.
-12. **Port `sim/` to C:** done when it passes every golden trajectory test.
-13. **Renderer:** pitch, goal and net, then shadow maps, PBR materials, an HDR sky, glTF figures with skeletal animation, instanced crowd, and post-processing (tone mapping, bloom, motion blur on the ball).
-14. **Parity and polish:** the on-screen display in ImGui or a custom UI, miniaudio sound, replays, and builds for macOS, Windows and Linux.
+See [native/plan.md](native/plan.md) for the full Phase B plan: the feature list, repo layout, engineering rules, milestones B0-B12, performance targets and risks.
 
 ## 7. Verification
 - Unit tests for ShotModel and BallPhysics:

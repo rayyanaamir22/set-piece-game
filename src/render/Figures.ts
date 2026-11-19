@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { SimState } from '../sim/Sim';
-import { kickerPositions } from '../sim/layout';
+import { dirToGoal, kickerPositions, rightOf } from '../sim/layout';
 
 export interface FigureColors {
   shirt: number;
@@ -136,5 +136,41 @@ export class KickerView {
       yaw = Math.atan2(-s.spot.x, -s.spot.z);
     }
     this.group.rotation.y = yaw;
+  }
+}
+
+/** The decoy runner of a dummy run-up: steps over the ball and carries on. */
+export class DecoyView {
+  readonly group: THREE.Group;
+  private legs: [THREE.Group, THREE.Group];
+  private arms: [THREE.Mesh, THREE.Mesh];
+
+  constructor() {
+    const f = buildFigure({ shirt: 0xd62828, shorts: 0xf4f4f4, skin: 0xe8b894 });
+    this.group = f.group;
+    this.legs = [f.legA, f.legB];
+    this.arms = [f.armA, f.armB];
+    this.group.visible = false;
+  }
+
+  update(s: SimState): void {
+    const show = s.dummy && s.phase === 'runup';
+    this.group.visible = show;
+    if (!show) return;
+    // Starts on the opposite side to the taker, runs across the ball and on past it.
+    const { runupStart } = kickerPositions(s.spot, s.foot === 'R' ? 'L' : 'R', s.runup);
+    const d = dirToGoal(s.spot);
+    const r = rightOf(d);
+    const side = s.foot === 'R' ? 1 : -1;
+    const end = { x: s.spot.x + d.x * 2.6 - r.x * side * 0.9, z: s.spot.z + d.z * 2.6 - r.z * side * 0.9 };
+    const u = Math.min(1, s.runupT / (s.dummyAt * 1.35));
+    const e = u * u * (3 - 2 * u);
+    this.group.position.set(runupStart.x + (end.x - runupStart.x) * e, 0, runupStart.z + (end.z - runupStart.z) * e);
+    this.group.rotation.y = Math.atan2(end.x - runupStart.x, end.z - runupStart.z);
+    const stride = Math.sin(s.runupT * 15);
+    this.legs[0].rotation.x = stride * 0.8;
+    this.legs[1].rotation.x = -stride * 0.8;
+    this.arms[0].rotation.x = -stride * 0.6;
+    this.arms[1].rotation.x = stride * 0.6;
   }
 }

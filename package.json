@@ -9,13 +9,16 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "lint": "eslint src tests"
+    "lint": "eslint src tests",
+    "golden": "UPDATE_GOLDEN=1 vitest run tests/golden.test.ts",
+    "contract": "UPDATE_CONTRACT=1 vitest run tests/contract.test.ts"
   },
   "dependencies": {
     "three": "^0.187.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@types/node": "^20.19.43",
     "@types/three": "^0.187.0",
     "eslint": "^10.15.0",
     "typescript": "^6.0.3",

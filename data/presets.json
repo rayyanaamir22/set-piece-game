@@ -1,0 +1,70 @@
+{
+  "easy": {
+    "label": "Easy",
+    "accuracyBonus": 0.1,
+    "settings": {
+      "keeperSkill": 0.4,
+      "keeperType": "balanced",
+      "wallEnabled": true,
+      "wallHeight": 1.7,
+      "wallCount": 0,
+      "wallJumps": false,
+      "lyingMan": "off",
+      "encroachment": "off",
+      "rebounds": true,
+      "windEnabled": false
+    }
+  },
+  "normal": {
+    "label": "Normal",
+    "accuracyBonus": 0.0,
+    "settings": {
+      "keeperSkill": 0.7,
+      "keeperType": "balanced",
+      "wallEnabled": true,
+      "wallHeight": 1.85,
+      "wallCount": 0,
+      "wallJumps": true,
+      "lyingMan": "sometimes",
+      "encroachment": "sometimes",
+      "rebounds": true,
+      "windEnabled": false
+    }
+  },
+  "hard": {
+    "label": "Hard",
+    "accuracyBonus": 0.0,
+    "settings": {
+      "keeperSkill": 0.85,
+      "keeperType": "quick",
+      "wallEnabled": true,
+      "wallHeight": 1.95,
+      "wallCount": 0,
+      "wallJumps": true,
+      "lyingMan": "sometimes",
+      "encroachment": "off",
+      "rebounds": true,
+      "windEnabled": true,
+      "windSpeed": 4,
+      "windDirection": 70
+    }
+  },
+  "pro": {
+    "label": "Pro",
+    "accuracyBonus": -0.1,
+    "settings": {
+      "keeperSkill": 0.95,
+      "keeperType": "tall",
+      "wallEnabled": true,
+      "wallHeight": 2.0,
+      "wallCount": 0,
+      "wallJumps": true,
+      "lyingMan": "always",
+      "encroachment": "sometimes",
+      "rebounds": true,
+      "windEnabled": true,
+      "windSpeed": 6,
+      "windDirection": 60
+    }
+  }
+}

@@ -35,6 +35,9 @@ export interface WallAi {
   /** Small sideways shuffle of the whole wall during the run-up: amplitude (m) and frequency (Hz). */
   shuffleAmp: number;
   shuffleFreq: number;
+  /** Dummy run-up: chance each player jumps for the decoy, and the max reaction delay (s). */
+  dummyJumpChance: number;
+  dummyJumpReactionMax: number;
 }
 
 export interface KeeperAi {
@@ -86,6 +89,8 @@ export interface KeeperAi {
   reboundZMax: number;
   /** Max consecutive follow-up shots. */
   maxRebounds: number;
+  /** Extra chance (x (1 - skill)) that a dummy run-up makes him commit to a side. */
+  dummyBite: number;
   /** Time for a diving keeper to hit the ground. */
   sinkTime: number;
 }

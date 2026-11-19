@@ -18,8 +18,39 @@ function curlText(cx: number, cy: number, knuckle: boolean): string {
   return parts.length ? parts.join('<br>') : '<b>Straight</b><br>centre contact';
 }
 
-/** Plain DOM overlay: distance, power meter, contact widget, result toast. */
+export interface ReplayHud {
+  camLabel: string;
+  camIndex: number;
+  camCount: number;
+  speed: number;
+  paused: boolean;
+  /** 0..1 */
+  progress: number;
+}
+
+/** Things the HUD shows that live outside the sim. */
+export interface HudUi {
+  mouseAim: boolean;
+  mouseLocked: boolean;
+  placing: boolean;
+  canReplay: boolean;
+  replayKey: string;
+  retryKey: string;
+  nextKey: string;
+  replay: ReplayHud | null;
+}
+
+const MEDAL = { gold: '🥇', silver: '🥈', bronze: '🥉' };
+
+/** Plain DOM overlay: distance, power meter, contact widget, result toast, challenge and replay overlays. */
 export class Hud {
+  private root: HTMLElement;
+  private challenge: HTMLElement;
+  private summary: HTMLElement;
+  private replayBar: HTMLElement;
+  private hint: HTMLElement;
+  private replayHint: HTMLElement;
+  private modeRow: HTMLElement;
   private distance: HTMLElement;
   private info: HTMLElement;
   private stats: HTMLElement;
@@ -68,7 +99,15 @@ export class Hud {
     contact.append(this.widget, this.curl);
 
     this.toast = el('div', 'toast');
-    root.append(tl, this.meterWrap, contact, this.toast);
+    this.root = root;
+    this.modeRow = el('div', 'row');
+    tl.insertBefore(this.modeRow, this.info);
+    this.challenge = el('div', 'panel challenge');
+    this.summary = el('div', 'panel summary');
+    this.replayBar = el('div', 'panel replay-bar');
+    this.hint = el('div', 'panel hint');
+    this.replayHint = el('div', 'replay-hint');
+    root.append(tl, this.meterWrap, contact, this.toast, this.replayHint, this.challenge, this.summary, this.replayBar, this.hint);
   }
 
   private drawWidget(cx: number, cy: number, knuckle: boolean): void {
@@ -106,7 +145,8 @@ export class Hud {
     g.stroke();
   }
 
-  update(s: SimState): void {
+  update(s: SimState, ui: HudUi): void {
+    this.root.classList.toggle('replaying', !!ui.replay);
     const dist = Math.hypot(s.spot.x, s.spot.z);
     this.distance.textContent = `${Math.round(dist)} m`;
     this.info.innerHTML =
@@ -151,11 +191,58 @@ export class Hud {
     const mods = [s.driven ? 'driven' : '', s.low ? 'low' : ''].filter(Boolean).join(' + ');
     this.curl.innerHTML = curlText(s.contact.x, s.contact.y, knuckle) + (mods ? `<br><i>${mods}</i>` : '');
 
-    this.updateToast(s);
+    this.updateToast(s, ui);
+    this.updateModes(s, ui);
   }
 
-  private updateToast(s: SimState): void {
-    if (s.phase !== 'result' || !s.result) {
+  private updateModes(s: SimState, ui: HudUi): void {
+    const mode = s.mode === 'free' ? 'Free kicks' : s.mode === 'practice' ? 'Practice' : 'Challenge';
+    this.modeRow.innerHTML = `<b>${mode}</b> · ${s.difficulty}`;
+
+    // Challenge bar + end-of-run summary.
+    const ch = s.challenge;
+    this.challenge.style.display = ch && !ui.replay ? '' : 'none';
+    this.summary.style.display = ch && ch.done && !ui.replay ? '' : 'none';
+    if (ch) {
+      const m = ch.def.medals;
+      this.challenge.innerHTML =
+        `<b>${ch.def.name}</b> · shot <b>${Math.min(ch.taken + (s.phase === 'result' || ch.done ? 0 : 1), ch.def.shots)}/${ch.def.shots}</b> · ` +
+        `<b>${ch.points}</b> pts <span class="dim">🥉${m.bronze} 🥈${m.silver} 🥇${m.gold}</span>`;
+      if (ch.done) {
+        const rows = ch.log
+          .map((l, i) => `<li><span>${i + 1}</span> ${l.type === 'goal' ? (l.ring >= 0 ? `ring ${l.ring + 1}` : 'goal') : l.type}<b>${l.points}</b></li>`)
+          .join('');
+        this.summary.innerHTML =
+          `<div class="medal">${ch.medal ? MEDAL[ch.medal] : '·'}</div><h2>${ch.medal ? `${ch.medal[0].toUpperCase()}${ch.medal.slice(1)} medal` : 'No medal'}</h2>` +
+          `<div class="pts">${ch.points} points</div><ul>${rows}</ul>` +
+          `<div class="dim"><kbd>${ui.retryKey}</kbd> try again · <kbd>${ui.nextKey}</kbd> next challenge</div>`;
+      }
+    }
+
+    // Replay overlay.
+    const r = ui.replay;
+    this.replayBar.style.display = r ? '' : 'none';
+    if (r) {
+      this.replayBar.innerHTML =
+        `<b class="rec">● REPLAY</b> <span>Camera <b>${r.camLabel}</b> (${r.camIndex}/${r.camCount})</span> <span><b>${r.speed}×</b>${r.paused ? ' · paused' : ''}</span>` +
+        `<div class="bar"><i style="width:${Math.round(r.progress * 100)}%"></i></div>` +
+        `<span class="dim"><kbd>1</kbd>–<kbd>${r.camCount}</kbd> camera · <kbd>Space</kbd> pause · <kbd>←</kbd><kbd>→</kbd> speed · <kbd>Esc</kbd> exit</span>`;
+    }
+
+    // One-line hints about the mouse / placing the ball.
+    let hint = '';
+    if (ui.replay) hint = '';
+    else if (ui.placing) hint = 'Click the pitch to place the ball · P to cancel';
+    else if (ui.mouseAim && !ui.mouseLocked && s.phase === 'aim') hint = 'Click the pitch to aim with the mouse';
+    else if (ui.mouseLocked) hint = 'Mouse captured · Esc to release';
+    this.hint.style.display = hint ? '' : 'none';
+    this.hint.textContent = hint;
+  }
+
+  private updateToast(s: SimState, ui: HudUi): void {
+    this.replayHint.style.display = ui.canReplay && s.phase === 'result' && !ui.replay && !(s.challenge && s.challenge.done) ? '' : 'none';
+    this.replayHint.innerHTML = `<kbd>${ui.replayKey}</kbd> instant replay`;
+    if (ui.replay || s.phase !== 'result' || !s.result || (s.challenge && s.challenge.done)) {
       if (this.lastToast) {
         this.toast.classList.remove('show');
         this.lastToast = '';
@@ -176,6 +263,7 @@ export class Hud {
           : wall
             ? 'Deflected off the wall'
             : '';
+      if (s.challenge && s.result.points > 0) sub = `${sub ? sub + ' · ' : ''}+${s.result.points} pts${s.result.ring >= 0 ? ` (ring ${s.result.ring + 1})` : ''}`;
       cls = 'goal';
     } else if (type === 'retake') {
       title = 'Retake!';

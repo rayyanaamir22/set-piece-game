@@ -1,7 +1,8 @@
-import { buildControlsPanel } from './ControlsPanel';
 
 const ICON_CONTROLS =
   '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="6.5" width="19" height="11" rx="5.5"/><path d="M7.5 10v4M5.5 12h4"/><circle cx="15.5" cy="11" r="1" fill="currentColor"/><circle cx="18" cy="13.2" r="1" fill="currentColor"/></svg>';
+const ICON_REPLAY =
+  '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="m10 9 5 3-5 3z" fill="currentColor"/></svg>';
 const ICON_SETTINGS =
   '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>';
 
@@ -20,15 +21,34 @@ export class Menu {
   private sheets: Sheet[] = [];
   private openId: PanelId | null = null;
 
+  private replayBtn!: HTMLButtonElement;
+
   constructor(
     root: HTMLElement,
+    controlsBody: HTMLElement,
     settingsBody: HTMLElement,
     private onToggle: (open: boolean) => void,
     onSettingsOpen: () => void,
+    onReplay: () => void,
+    onControlsOpen: () => void = () => undefined,
   ) {
     const bar = document.createElement('div');
     bar.className = 'menu-bar';
     root.append(bar);
+
+    // Instant replay: only offered once there is an attempt to watch.
+    this.replayBtn = document.createElement('button');
+    this.replayBtn.type = 'button';
+    this.replayBtn.className = 'icon-btn replay-btn';
+    this.replayBtn.innerHTML = ICON_REPLAY;
+    this.replayBtn.title = 'Instant replay';
+    this.replayBtn.setAttribute('aria-label', 'Instant replay');
+    this.replayBtn.hidden = true;
+    this.replayBtn.addEventListener('click', () => {
+      onReplay();
+      this.replayBtn.blur();
+    });
+    bar.append(this.replayBtn);
 
     const add = (id: PanelId, title: string, icon: string, body: HTMLElement, onOpen?: () => void) => {
       const button = document.createElement('button');
@@ -64,12 +84,16 @@ export class Menu {
       this.sheets.push({ id, title, button, sheet, onOpen });
     };
 
-    add('controls', 'Controls', ICON_CONTROLS, buildControlsPanel());
+    add('controls', 'Controls', ICON_CONTROLS, controlsBody, onControlsOpen);
     add('settings', 'Settings', ICON_SETTINGS, settingsBody, onSettingsOpen);
 
     window.addEventListener('keydown', (e) => {
       if (e.code === 'Escape' && this.openId) this.close();
     });
+  }
+
+  setReplayAvailable(on: boolean): void {
+    this.replayBtn.hidden = !on;
   }
 
   get isOpen(): boolean {
