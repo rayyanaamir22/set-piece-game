@@ -2,18 +2,16 @@
 #pragma once
 #include <SDL3/SDL.h>
 
+#include <functional>
 #include <set>
 #include <string>
 
 #include "platform/keymap.h"
+#include "platform/mouse.h"
 #include "sim/input_state.h"
 
 namespace platform {
 
-constexpr double AIM_M_PER_PX = 0.012;
-constexpr double CONTACT_PER_PX = 0.006;
-constexpr double SENS_MIN = 0.2, SENS_MAX = 3;
-double clampSens(double s);
 
 struct Polled {
     sim::InputState input;
@@ -27,6 +25,10 @@ public:
     bool mouseAim = true;
     double sensitivity = 1;
     bool usingPad = false;
+    // Practice: a click on the pitch places the ball instead of capturing the mouse. Receives the click position
+    // normalised to the window (0..1, y down).
+    bool placing = false;
+    std::function<void(double, double)> onGroundClick;
 
     // Feed every SDL event (after ImGui has seen it). Returns nothing; state is internal.
     void handleEvent(const SDL_Event& e, SDL_Window* window);

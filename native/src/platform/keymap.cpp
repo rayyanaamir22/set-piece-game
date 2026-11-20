@@ -45,6 +45,51 @@ bool holds(const Keymap& map, Action a, std::string_view code) {
     return false;
 }
 
+bool isReserved(std::string_view code) { return code == "Escape"; }
+
+const ActionDef& actionDef(Action a) { return actions()[static_cast<size_t>(a)]; }
+
+std::vector<Action> conflicts(const Keymap& map, std::string_view code, int except) {
+    std::vector<Action> out;
+    for (const auto& a : actions())
+        if (static_cast<int>(a.id) != except && holds(map, a.id, code)) out.push_back(a.id);
+    return out;
+}
+
+Keymap rebind(const Keymap& map, Action id, const std::string& code) {
+    if (isReserved(code)) return map;
+    const std::string given = map[static_cast<size_t>(id)][0];
+    Keymap out;
+    for (const auto& a : actions()) {
+        std::vector<std::string> keys;
+        for (const auto& c : map[static_cast<size_t>(a.id)])
+            if (a.id == id || c != code) keys.push_back(c);
+        if (a.id == id) {
+            std::vector<std::string> rest;
+            for (const auto& c : keys)
+                if (c != code) rest.push_back(c);
+            keys = {code};
+            for (size_t i = 1; i < rest.size(); i++) keys.push_back(rest[i]);
+        }
+        if (keys.empty()) keys = {given};
+        out[static_cast<size_t>(a.id)] = keys;
+    }
+    return out;
+}
+
+std::string keyLabel(const std::string& code) {
+    static const std::unordered_map<std::string, std::string> special = {
+        {"Space", "Space"}, {"ShiftLeft", "Shift"}, {"ShiftRight", "Shift"}, {"ControlLeft", "Ctrl"}, {"ControlRight", "Ctrl"},
+        {"AltLeft", "Alt"}, {"AltRight", "Alt"}, {"ArrowLeft", "Left"}, {"ArrowRight", "Right"}, {"ArrowUp", "Up"}, {"ArrowDown", "Down"},
+        {"BracketLeft", "["}, {"BracketRight", "]"}, {"Enter", "Enter"}, {"Tab", "Tab"}, {"Backspace", "Backspace"}, {"Comma", ","},
+        {"Period", "."}, {"Slash", "/"}, {"Semicolon", ";"}, {"Quote", "'"}, {"Minus", "-"}, {"Equal", "="}, {"Backquote", "`"}, {"Backslash", "\\"}};
+    auto it = special.find(code);
+    if (it != special.end()) return it->second;
+    if (code.rfind("Key", 0) == 0) return code.substr(3);
+    if (code.rfind("Digit", 0) == 0) return code.substr(5);
+    return code;
+}
+
 std::string_view codeFor(SDL_Scancode sc) {
     static const std::unordered_map<int, std::string> table = [] {
         std::unordered_map<int, std::string> t;

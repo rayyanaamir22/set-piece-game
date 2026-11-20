@@ -118,11 +118,12 @@ native/
 - Exit: all goldens pass in CI (ball position within 1 cm for the whole flight, identical results and RNG state), and the ported unit tests pass.
 - Done: `native/src/sim` ports every module (JS-compatible `Math.hypot`/`min`/`max`/`round`/`sign`; `-ffp-contract=off` so the compiler cannot fuse multiply-adds). `native/tests/golden_driver.cpp` replays `tests/golden/*.json` with the contract's tolerances; the unit tests are ported to doctest (`unit_*.cpp`). Not ported because they test web-only code: `input`, `replay`, `contract`.
 
-**B3. Graybox and feature parity**
+**B3. Graybox and feature parity: done**
 - Pitch, markings, goal frame, capsule players, ball, reticle, aim arrow, run-up marker and path aid.
 - HUD: distance, run-up and wind readouts, power meter, contact widget, result toasts.
 - Controls and Settings screens with every web setting, saved to a prefs file.
 - Exit: the native build plays exactly like the web build. A side-by-side playtest from the same seed gives the same outcomes.
+- Done: `src/render` (graybox scene: striped pitch and markings, goal and rippling net, capsule players for taker/decoy/wall/lying man/keeper, spinning ball, reticle, aim arrow, run-up marker, predicted path, spray, challenge rings, camera rig), `src/game` (app loop, HUD, Settings and Controls sheets with key rebinding, prefs JSON in the user dir, challenge medals/bests, practice click-to-place). Settings that depend on later milestones (audio, quality, replay) are shown disabled with a "[later milestone]" tag. 4x MSAA is already on. The game runs the same sim as the web build, so same-seed outcomes follow from the B2 goldens. Developer flags: `--seed N`, `--prefs FILE`, `--frames N --shot out.png [--demo-shoot] [--open settings|controls]`.
 
 **B4. Lighting and materials**
 - PBR shader, IBL (pre-filtered environment and BRDF lookup baked at load), 3-cascade shadow maps.

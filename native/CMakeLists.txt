@@ -28,6 +28,17 @@ CPMAddPackage(
 )
 
 CPMAddPackage(
+  NAME glm
+  GITHUB_REPOSITORY g-truc/glm
+  GIT_TAG 1.0.1
+)
+CPMAddPackage(
+  NAME stb
+  GITHUB_REPOSITORY nothings/stb
+  GIT_TAG 6b5799bae8a1fe3792691ef4b72ae26434c3e799
+  DOWNLOAD_ONLY YES
+)
+CPMAddPackage(
   NAME nlohmann_json
   GITHUB_REPOSITORY nlohmann/json
   GIT_TAG v3.12.0
@@ -80,8 +91,32 @@ add_library(platform STATIC
 target_include_directories(platform PUBLIC src)
 target_link_libraries(platform PUBLIC sim glad SDL3::SDL3-static)
 
-add_executable(setpiece src/app/main.cpp src/app/overlay.cpp)
-target_link_libraries(setpiece PRIVATE platform imgui)
+# ---- gfx + render: GL wrapper and the graybox scene (reads the sim, never writes it) ----
+add_library(render STATIC
+  src/gfx/gfx.cpp
+  src/render/shapes.cpp
+  src/render/camera_rig.cpp
+  src/render/figures.cpp
+  src/render/game_view.cpp)
+target_include_directories(render PUBLIC src)
+target_link_libraries(render PUBLIC sim glad glm::glm)
+target_compile_definitions(render PUBLIC GLM_ENABLE_EXPERIMENTAL GLM_FORCE_DEPTH_ZERO_TO_ONE=0)
+
+# ---- game: app loop, prefs, HUD and menus ----
+add_library(game STATIC
+  src/game/prefs.cpp
+  src/game/ui_hud.cpp
+  src/game/ui_sheets.cpp
+  src/game/app.cpp)
+target_include_directories(game PUBLIC src ${stb_SOURCE_DIR})
+target_link_libraries(game PUBLIC render platform imgui)
+target_compile_definitions(game PUBLIC
+  SETPIECE_ASSET_DIR="${CMAKE_CURRENT_SOURCE_DIR}/assets"
+  SETPIECE_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../data")
+
+add_executable(setpiece src/app/main.cpp src/app/stb_impl.cpp)
+target_include_directories(setpiece PRIVATE ${stb_SOURCE_DIR})
+target_link_libraries(setpiece PRIVATE game)
 
 # ---- tests (doctest): golden parity + ported unit tests ----
 option(SETPIECE_BUILD_TESTS "Build the doctest suite" ON)
@@ -89,8 +124,8 @@ if(SETPIECE_BUILD_TESTS)
   enable_testing()
   file(GLOB UNIT_TESTS CONFIGURE_DEPENDS tests/*.cpp)
   add_executable(sim_tests ${UNIT_TESTS})
-  target_include_directories(sim_tests PRIVATE ${doctest_SOURCE_DIR})
-  target_link_libraries(sim_tests PRIVATE sim)
+  target_include_directories(sim_tests PRIVATE ${doctest_SOURCE_DIR} ${stb_SOURCE_DIR})
+  target_link_libraries(sim_tests PRIVATE game)
   target_compile_definitions(sim_tests PRIVATE SETPIECE_REPO_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/..")
   if(NOT MSVC)
     target_compile_options(sim_tests PRIVATE -Wall -Wextra)
@@ -105,4 +140,6 @@ else()
   target_compile_options(sim PRIVATE -Wall -Wextra -Wpedantic -ffp-contract=off)
   target_compile_options(platform PRIVATE -Wall -Wextra -Wpedantic)
   target_compile_options(setpiece PRIVATE -Wall -Wextra -Wpedantic)
+  target_compile_options(render PRIVATE -Wall -Wextra)
+  target_compile_options(game PRIVATE -Wall -Wextra)
 endif()

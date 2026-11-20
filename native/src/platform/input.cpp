@@ -10,8 +10,6 @@ constexpr double DEAD = 0.18;
 double dz(double v) { return std::fabs(v) < DEAD ? 0.0 : v; }
 }  // namespace
 
-double clampSens(double s) { return std::isfinite(s) ? std::min(SENS_MAX, std::max(SENS_MIN, s)) : 1.0; }
-
 void Input::setMouseLocked(SDL_Window* w, bool on) {
     if (on == locked_) return;
     locked_ = on;
@@ -43,11 +41,9 @@ void Input::openFirstPad() {
 
 void Input::mouseMove(double dx, double dy, bool contact) {
     if (contact) {
-        const double k = CONTACT_PER_PX * clampSens(sensitivity);
-        double x = cx_ + dx * k, y = cy_ - dy * k;
-        const double m = std::hypot(x, y);
-        if (m > 1) { x /= m; y /= m; }
-        cx_ = x; cy_ = y;
+        const Vec2 c = moveContactCursor({cx_, cy_}, dx, dy, sensitivity);
+        cx_ = c.x;
+        cy_ = c.y;
     } else {
         accDx_ += dx;
         accDy_ += dy;
@@ -83,6 +79,12 @@ void Input::handleEvent(const SDL_Event& e, SDL_Window* window) {
     case SDL_EVENT_MOUSE_BUTTON_DOWN:
         if (!enabled_) break;
         if (e.button.button == SDL_BUTTON_LEFT) {
+            if (placing && onGroundClick) {
+                int w = 1, h = 1;
+                SDL_GetWindowSize(window, &w, &h);
+                onGroundClick(e.button.x / w, e.button.y / h);
+                break;
+            }
             left_ = true;
             if (mouseAim && !locked_) setMouseLocked(window, true);  // first click captures the pointer
         }
@@ -138,9 +140,9 @@ Polled Input::poll(double dt) {
     i.contactY = cy_;
 
     // Mouse reticle movement: applied once per frame by the app (not per sim step).
-    const double k = AIM_M_PER_PX * clampSens(sensitivity);
-    i.aimDeltaX = accDx_ * k;
-    i.aimDeltaY = -accDy_ * k;
+    const Vec2 d = aimDeltaFromMouse(accDx_, accDy_, sensitivity);
+    i.aimDeltaX = d.x;
+    i.aimDeltaY = d.y;
     accDx_ = accDy_ = 0;
 
     i.shoot = held(Action::Shoot) || (locked_ && left_);

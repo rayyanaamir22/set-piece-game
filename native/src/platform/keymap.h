@@ -34,6 +34,17 @@ using Keymap = std::array<std::vector<std::string>, static_cast<size_t>(Action::
 Keymap defaultKeymap();
 bool holds(const Keymap& map, Action a, std::string_view code);
 
+// Keys that can never be bound: Esc always closes menus / frees the mouse.
+bool isReserved(std::string_view code);
+// Which actions currently use `code` (optionally ignoring one).
+std::vector<Action> conflicts(const Keymap& map, std::string_view code, int except = -1);
+// Make `code` the primary key of `id`. Any other action that used the key loses it; if that leaves it with
+// no key at all, it takes over the key `id` just gave up (a swap).
+Keymap rebind(const Keymap& map, Action id, const std::string& code);
+// Human label for a KeyboardEvent.code ("KeyA" -> "A", "ArrowLeft" -> "Left", ...).
+std::string keyLabel(const std::string& code);
+const ActionDef& actionDef(Action a);
+
 // SDL scancode -> KeyboardEvent.code ("KeyA", "Space", "ShiftLeft", ...); empty if unmapped.
 std::string_view codeFor(SDL_Scancode sc);
 
