@@ -15,10 +15,20 @@ int main(int argc, char** argv) {
         else if (a == "--shot") opts.shotPath = next();
         else if (a == "--frames") opts.frames = std::atoi(next());
         else if (a == "--demo-shoot") opts.demoShoot = true;
+        else if (a == "--aim") {
+            const double x = std::atof(next());
+            const double y = std::atof(next());
+            opts.demoAim = {x, y};
+        } else if (a == "--contact") {
+            const double x = std::atof(next());
+            const double y = std::atof(next());
+            opts.demoContact = {x, y};
+        } else if (a == "--debug-cam") opts.debugCam = next();
+        else if (a == "--bench") opts.bench = std::atoi(next());
         else if (a == "--open") opts.openSheet = next();
         else if (a == "--prefs") opts.prefsOverride = next();
         else if (a == "--help") {
-            std::printf("setpiece [--seed N] [--prefs FILE] [--frames N --shot out.png [--demo-shoot]]\n");
+            std::printf("setpiece [--seed N] [--prefs FILE] [--frames N --shot out.png [--demo-shoot] [--aim X Y] [--contact X Y] [--debug-cam taker|keeper]] [--bench N]\n");
             return 0;
         }
     }

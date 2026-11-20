@@ -9,6 +9,7 @@ namespace game {
 
 using namespace sim;
 using platform::Action;
+using game::Quality;
 
 namespace {
 const ImVec4 DIMC(1, 1, 1, 0.62f), ACCENTC(1.f, 210 / 255.f, 63 / 255.f, 1);
@@ -481,15 +482,14 @@ void Sheets::drawSettings(SheetCtx& ctx) {
 
     // ---- Graphics
     if (sectionHeader(P, "Graphics", true)) {
-        label("Quality", true);
-        ImGui::BeginDisabled();
-        segmented("quality", {"Low", "Medium", "High"}, static_cast<int>(P.quality));
-        ImGui::EndDisabled();
-        note("Arrives with the lighting milestone (shadows, MSAA, render scale).");
+        label("Quality");
+        const int qv = segmented("quality", {"Low", "Medium", "High"}, static_cast<int>(P.quality));
+        if (qv >= 0) { P.quality = static_cast<Quality>(qv); ctx.apply(); }
+        note("Low: no shadows, 2x anti-aliasing. Medium: 1K shadow maps. High: 2K shadow maps with soft edges.");
         label("Time of day");
         const int t = segmented("tod", {"Day", "Dusk", "Night"}, static_cast<int>(P.timeOfDay));
         if (t >= 0) { P.timeOfDay = static_cast<render::TimeOfDay>(t); ctx.apply(); }
-        note("Sky and light colour. Floodlights come with the stadium milestone.");
+        note("Sun, sky and exposure. Floodlights come with the stadium milestone.");
     }
 
     // ---- Camera

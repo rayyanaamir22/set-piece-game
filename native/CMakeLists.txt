@@ -91,15 +91,28 @@ add_library(platform STATIC
 target_include_directories(platform PUBLIC src)
 target_link_libraries(platform PUBLIC sim glad SDL3::SDL3-static)
 
+# ---- anim: skeleton, IK, procedural character and the player animators (pure maths: no GL) ----
+add_library(anim STATIC
+  src/anim/skeleton.cpp
+  src/anim/ik.cpp
+  src/anim/character_mesh.cpp
+  src/anim/players.cpp)
+target_include_directories(anim PUBLIC src)
+target_link_libraries(anim PUBLIC sim glm::glm)
+target_compile_definitions(anim PUBLIC GLM_ENABLE_EXPERIMENTAL)
+
 # ---- gfx + render: GL wrapper and the graybox scene (reads the sim, never writes it) ----
 add_library(render STATIC
   src/gfx/gfx.cpp
   src/render/shapes.cpp
   src/render/camera_rig.cpp
-  src/render/figures.cpp
+  src/render/ibl.cpp
+  src/render/shadows.cpp
+  src/render/painter.cpp
+  src/render/players_view.cpp
   src/render/game_view.cpp)
 target_include_directories(render PUBLIC src)
-target_link_libraries(render PUBLIC sim glad glm::glm)
+target_link_libraries(render PUBLIC sim anim glad glm::glm)
 target_compile_definitions(render PUBLIC GLM_ENABLE_EXPERIMENTAL GLM_FORCE_DEPTH_ZERO_TO_ONE=0)
 
 # ---- game: app loop, prefs, HUD and menus ----
@@ -112,6 +125,7 @@ target_include_directories(game PUBLIC src ${stb_SOURCE_DIR})
 target_link_libraries(game PUBLIC render platform imgui)
 target_compile_definitions(game PUBLIC
   SETPIECE_ASSET_DIR="${CMAKE_CURRENT_SOURCE_DIR}/assets"
+  SETPIECE_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/shaders"
   SETPIECE_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../data")
 
 add_executable(setpiece src/app/main.cpp src/app/stb_impl.cpp)

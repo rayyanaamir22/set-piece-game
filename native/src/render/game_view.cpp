@@ -1,6 +1,7 @@
 #include "render/game_view.h"
 
 #include <algorithm>
+#include <chrono>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 
@@ -15,63 +16,9 @@ using sim::Phase;
 
 namespace {
 constexpr float PI = 3.14159265358979f;
-const char* LIT_VS = R"(#version 410 core
-layout(location=0) in vec3 aPos;
-layout(location=1) in vec3 aNormal;
-uniform mat4 uViewProj;
-uniform mat4 uModel;
-uniform mat3 uNormalMat;
-out vec3 vN;
-out vec3 vWorld;
-out vec3 vObj;
-void main(){
-  vec4 w = uModel * vec4(aPos, 1.0);
-  vWorld = w.xyz;
-  vN = uNormalMat * aNormal;
-  vObj = aPos;
-  gl_Position = uViewProj * w;
-}
-)";
-const char* LIT_FS = R"(#version 410 core
-in vec3 vN; in vec3 vWorld; in vec3 vObj;
-uniform vec4 uColor;
-uniform int uPattern;
-uniform vec3 uSky; uniform vec3 uGround; uniform float uHemi;
-uniform vec3 uSunDir; uniform vec3 uSunColor; uniform float uSunI;
-uniform vec3 uFogColor; uniform vec2 uFog; uniform vec3 uCam;
-out vec4 oColor;
-vec3 toLin(vec3 c){ return pow(c, vec3(2.2)); }
-vec3 toSrgb(vec3 c){ return pow(max(c, vec3(0.0)), vec3(1.0/2.2)); }
-void main(){
-  vec3 n = normalize(vN);
-  vec3 albedo = toLin(uColor.rgb);
-  if (uPattern == 1) {
-    // Ball panels: a patch pattern in object space, so spin is readable.
-    vec3 d = normalize(vObj);
-    float p = sin(5.0*d.x + 0.7) * sin(5.0*d.y + 1.9) * sin(5.0*d.z + 0.3);
-    albedo = mix(albedo, toLin(vec3(0.10)), step(0.0, p));
-  }
-  vec3 hemi = mix(toLin(uGround), toLin(uSky), 0.5 + 0.5*n.y) * uHemi;
-  float nl = max(dot(n, normalize(uSunDir)), 0.0);
-  vec3 irr = hemi + toLin(uSunColor) * uSunI * nl;
-  vec3 col = albedo * irr / 3.14159265;
-  float dist = length(vWorld - uCam);
-  float f = clamp((dist - uFog.x) / (uFog.y - uFog.x), 0.0, 1.0);
-  col = mix(col, toLin(uFogColor), f);
-  oColor = vec4(toSrgb(col), uColor.a);
-}
-)";
-const char* UNLIT_FS = R"(#version 410 core
-in vec3 vN; in vec3 vWorld; in vec3 vObj;
-uniform vec4 uColor;
-uniform vec3 uFogColor; uniform vec2 uFog; uniform vec3 uCam;
-out vec4 oColor;
-void main(){
-  float dist = length(vWorld - uCam);
-  float f = clamp((dist - uFog.x) / (uFog.y - uFog.x), 0.0, 1.0);
-  oColor = vec4(mix(uColor.rgb, uFogColor, f), uColor.a);
-}
-)";
+// Cascade far planes (metres) and how far towards the sun shadow casters are still included.
+const glm::vec3 SPLITS(12.f, 35.f, 100.f);
+constexpr float CASTER_REACH = 90.f;
 
 struct MeshBuf {
     std::vector<gfx::Vertex> v;
@@ -103,15 +50,22 @@ struct MeshBuf {
 };
 }  // namespace
 
-GameView::GameView(double ballRadius)
+GameView::GameView(double ballRadius, const std::string& dir)
     : radius_(ballRadius),
+      shaderDir_(dir),
       look_(lookFor(TimeOfDay::Day)),
-      litShader_(LIT_VS, LIT_FS, "lit"),
-      unlitShader_(LIT_VS, UNLIT_FS, "unlit"),
+      pbr_(dir, "scene.vert", "pbr.frag"),
+      depth_(dir, "depth.vert", "depth.frag"),
+      sky_(dir, "fullscreen.vert", "sky.frag"),
+      tonemap_(dir, "fullscreen.vert", "tonemap.frag"),
+      unlitShader_(dir, "scene.vert", "unlit.frag"),
+      pbrSkinned_(dir, "skinned.vert", "pbr_skinned.frag"),
+      skinnedDepth_(dir, "skinned_depth.vert", "depth.frag"),
+      ibl_(std::make_unique<Ibl>(dir)),
       post_(makeCylinder(static_cast<float>(sim::POST_RADIUS), static_cast<float>(sim::GOAL_HEIGHT), 16)),
       bar_(makeCylinder(static_cast<float>(sim::POST_RADIUS), static_cast<float>(sim::GOAL_HALF_WIDTH * 2 + sim::POST_RADIUS * 2), 16)),
       stanchion_(makeCylinder(0.03f, static_cast<float>(sim::GOAL_DEPTH), 8)),
-      ballMesh_(makeSphere(static_cast<float>(ballRadius), 24, 16)),
+      ballMesh_(makeSphere(static_cast<float>(ballRadius), 32, 20)),
       ballShadow_(makeDisc(static_cast<float>(ballRadius) * 1.5f, 16)),
       reticleRing_(makeRing(0.26f, 0.34f, 40)),
       reticleDot_(makeDisc(0.06f, 16)),
@@ -119,7 +73,6 @@ GameView::GameView(double ballRadius)
       runupRing_(makeRing(0.25f, 0.34f, 28)),
       sprayRing_(makeRing(0.18f, 0.34f, 28)),
       sprayLine_(makePlane(3.4f, 0.16f)) {
-    lit_.shader = &litShader_;
     buildPitch();
     buildGoal();
 
@@ -131,10 +84,34 @@ GameView::GameView(double ballRadius)
         for (auto p : pts) v.push_back({{p.x, 0, -p.y}, {0, 1, 0}});
         arrow_ = gfx::Mesh(v, {0, 1, 2, 0, 2, 6, 6, 2, 3, 6, 3, 5, 5, 3, 4});
     }
-    setTimeOfDay(TimeOfDay::Day);
+    {
+        MeshBuf b;
+        b.quad({-400, -400}, {400, -400}, {400, 400}, {-400, 400}, -0.02f);
+        outerGround_ = b.build();
+    }
+    samples_ = gfx::clampSamples(4);
 }
 
-void GameView::setTimeOfDay(TimeOfDay t) { look_ = lookFor(t); }
+void GameView::setTimeOfDay(TimeOfDay t) {
+    tod_ = t;
+    look_ = lookFor(t);
+    lookDirty_ = true;
+}
+
+void GameView::setQuality(Quality q) { quality_ = q; }
+
+void GameView::ensureTargets(int w, int h) {
+    const int samples = quality_ == Quality::Low ? gfx::clampSamples(2) : gfx::clampSamples(4);
+    if (!target_.matches(w, h, samples)) {
+        target_.create(w, h, samples);
+        samples_ = samples;
+    }
+    const int shadowSize = quality_ == Quality::Low ? 0 : quality_ == Quality::Medium ? 1024 : 2048;
+    if (shadows_.size() != shadowSize) {
+        if (shadowSize == 0) shadows_.destroy();
+        else shadows_.create(shadowSize);
+    }
+}
 
 void GameView::buildPitch() {
     // Grass mown in 5.5 m bands parallel to the goal line: two meshes (dark / light bands).
@@ -161,13 +138,11 @@ void GameView::buildPitch() {
     lines.line(-six, 0, -six, sixZ, W, Y);
     lines.line(six, 0, six, sixZ, W, Y);
     lines.line(-six, sixZ, six, sixZ, W, Y);
-    // Penalty spot and the "D" outside the box.
     const float spotZ = static_cast<float>(sim::PENALTY_SPOT_Z);
     lines.arc(0, spotZ, 0.075f, 0, 2 * PI, 0.15f, Y, 12);
     const float R = static_cast<float>(sim::CENTRE_ARC_RADIUS);
     const float phi = std::acos((boxZ - spotZ) / R);
     lines.arc(0, spotZ, R, -PI / 2 - phi, -PI / 2 + phi, W, Y, 64);
-    // Corner arcs (r = 1 m).
     lines.arc(-H, 0, 1, -PI / 2, 0, W, Y, 16);
     lines.arc(H, 0, 1, -PI, -PI / 2, W, Y, 16);
     pitchLines_ = lines.build();
@@ -229,28 +204,51 @@ void GameView::unlit(const gfx::Mesh& m, const mat4& model, const vec3& c, float
     m.draw();
 }
 
-ScreenPoint GameView::project(const vec3& w) const {
-    const glm::vec4 c = viewProj_ * glm::vec4(w, 1);
-    if (c.w <= 0.01f) return {{0, 0}, false};
-    const glm::vec3 n = glm::vec3(c) / c.w;
-    return {{(n.x * 0.5f + 0.5f) * fbW_, (1 - (n.y * 0.5f + 0.5f)) * fbH_}, std::fabs(n.x) < 1.2f && std::fabs(n.y) < 1.2f};
-}
+// Everything that lies on or stands on the pitch. Receivers (grass, lines) are skipped in the shadow pass.
+void GameView::drawWorld(const sim::SimState&, const LitPainter& p, bool shadowPass) {
+    if (!shadowPass) {
+        p.draw(stripeLight_, mat4(1), hex(0x378a3a), 1.f, 0, 0.92f, 0.f, 1);
+        p.draw(stripeDark_, mat4(1), hex(0x2f7d32), 1.f, 0, 0.92f, 0.f, 1);
+        p.draw(outerGround_, mat4(1), hex(0x2a6a2e), 1.f, 0, 0.95f, 0.f, 1);
+        p.draw(pitchLines_, mat4(1), hex(0xf4f4f0), 1.f, 0, 0.75f);
+    }
+    // Goal frame.
+    const vec3 white(0.93f);
+    const float GW = static_cast<float>(sim::GOAL_HALF_WIDTH), GH = static_cast<float>(sim::GOAL_HEIGHT), GD = static_cast<float>(sim::GOAL_DEPTH);
+    for (float sx : {-1.f, 1.f}) {
+        p.draw(post_, glm::translate(mat4(1), vec3(sx * GW, GH / 2, 0)), white, 1.f, 0, 0.38f);
+        p.draw(stanchion_, glm::translate(mat4(1), vec3(sx * GW, GH, -GD / 2)) * glm::rotate(mat4(1), PI / 2, vec3(1, 0, 0)), vec3(0.8f), 1.f, 0, 0.45f, 0.6f);
+    }
+    p.draw(bar_, glm::translate(mat4(1), vec3(0, GH, 0)) * glm::rotate(mat4(1), PI / 2, vec3(0, 0, 1)), white, 1.f, 0, 0.38f);
 
-std::optional<glm::vec2> GameView::pickGround(double nx, double ny) const {
-    const glm::vec4 a = glm::inverse(viewProj_) * glm::vec4(static_cast<float>(nx * 2 - 1), static_cast<float>(1 - ny * 2), -1, 1);
-    const glm::vec4 b = glm::inverse(viewProj_) * glm::vec4(static_cast<float>(nx * 2 - 1), static_cast<float>(1 - ny * 2), 1, 1);
-    const vec3 p0 = vec3(a) / a.w, p1 = vec3(b) / b.w;
-    const vec3 dir = p1 - p0;
-    if (std::fabs(dir.y) < 1e-6f) return std::nullopt;
-    const float t = -p0.y / dir.y;
-    if (t < 0) return std::nullopt;
-    const vec3 hit = p0 + dir * t;
-    return glm::vec2(hit.x, hit.z);
+    players_.draw(p);
+    p.draw(ballMesh_, glm::translate(mat4(1), ballPos_) * glm::mat4_cast(ballRot_), vec3(0.96f), 1.f, 1, 0.42f);
 }
 
 void GameView::render(const sim::SimState& s, double alpha, double dt, int fbW, int fbH) {
     fbW_ = fbW;
     fbH_ = fbH;
+
+    // Shader hot reload (a few times a second is plenty).
+    reloadClock_ += dt;
+    if (reloadClock_ > 0.5) {
+        reloadClock_ = 0;
+        pbr_.reloadIfChanged();
+        depth_.reloadIfChanged();
+        sky_.reloadIfChanged();
+        tonemap_.reloadIfChanged();
+        unlitShader_.reloadIfChanged();
+        pbrSkinned_.reloadIfChanged();
+        skinnedDepth_.reloadIfChanged();
+        ibl_->reloadShaders();
+    }
+
+    ensureTargets(fbW, fbH);
+    if (lookDirty_) {
+        ibl_->bake(look_);
+        lookDirty_ = false;
+    }
+
     // Interpolated ball.
     const sim::V3 &p = s.prevBallPos, &q = s.ball.pos;
     ballPos_ = vec3(p.x + (q.x - p.x) * alpha, p.y + (q.y - p.y) * alpha, p.z + (q.z - p.z) * alpha);
@@ -268,77 +266,96 @@ void GameView::render(const sim::SimState& s, double alpha, double dt, int fbW, 
     }
     updateNet(dt);
     rig.update(s, ballPos_, dt);
+    players_.update(s, dt);
+    if (debugCam_ == "taker") {
+        const glm::mat4& m = players_.animators().taker.character.model;
+        const vec3 c = vec3(m[3]);
+        rig.setOverride(c + vec3(m[0]) * 4.2f + vec3(0, 0.7f, 0), c + vec3(0, 0.9f, 0));
+    } else if (debugCam_ == "keeper" && players_.animators().keeper.character) {
+        const vec3 c = vec3(players_.animators().keeper.character->model[3]);
+        rig.setOverride(vec3(c.x, 1.3f, c.z + 5.5f), vec3(c.x, 1.0f, c.z));
+    } else {
+        rig.clearOverride();
+    }
 
     view_ = rig.view();
-    proj_ = rig.projection(static_cast<float>(fbW) / static_cast<float>(std::max(1, fbH)));
+    const float aspect = static_cast<float>(fbW) / static_cast<float>(std::max(1, fbH));
+    proj_ = rig.projection(aspect);
     viewProj_ = proj_ * view_;
-
-    glViewport(0, 0, fbW, fbH);
-    glClearColor(look_.bg.r, look_.bg.g, look_.bg.b, 1);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    glEnable(GL_DEPTH_TEST);
-    glDisable(GL_CULL_FACE);
-    glDepthMask(GL_TRUE);
-    glDisable(GL_BLEND);
-
     const vec3 cam = rig.position();
-    const vec3 sunDir = glm::normalize(look_.sunPos - vec3(0, 0, 15));
-    auto setCommon = [&](const gfx::Shader& sh) {
-        sh.use();
-        sh.set("uViewProj", viewProj_);
-        sh.set("uFogColor", look_.fog);
-        sh.set("uFog", glm::vec2(look_.fogNear, look_.fogFar));
-        sh.set("uCam", cam);
-    };
-    setCommon(litShader_);
-    litShader_.set("uSky", look_.sky);
-    litShader_.set("uGround", look_.ground);
-    litShader_.set("uHemi", look_.hemi);
-    litShader_.set("uSunDir", sunDir);
-    litShader_.set("uSunColor", look_.sun);
-    litShader_.set("uSunI", look_.sunI);
 
-    // ---- pitch (lit)
-    const vec3 darkG = hex(0x2f7d32), lightG = hex(0x378a3a);
-    lit_.draw(stripeLight_, mat4(1), lightG);
-    lit_.draw(stripeDark_, mat4(1), darkG);
-    // Outer ground so the horizon is not a cliff edge.
-    {
-        static const gfx::Mesh outer = [] {
-            MeshBuf b;
-            b.quad({-400, -400}, {400, -400}, {400, 400}, {-400, 400}, -0.02f);
-            return b.build();
-        }();
-        lit_.draw(outer, mat4(1), hex(0x2a6a2e));
+    gpuTimer_.begin();
+    glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LEQUAL);
+    glDisable(GL_CULL_FACE);
+    glDisable(GL_BLEND);
+    glDepthMask(GL_TRUE);
+
+    // ---- shadow cascades
+    const bool shadowsOn = shadows_.size() > 0;
+    if (shadowsOn) {
+        cascades_ = fitCascades(view_, glm::radians(CameraRig::FOV_DEG), aspect, CameraRig::NEAR, look_.sunDir, shadows_.size(), SPLITS, CASTER_REACH);
+        depth_.use();
+        lit_.shader = &depth_;
+        lit_.skinned = &skinnedDepth_;
+        lit_.depthOnly = true;
+        glEnable(GL_POLYGON_OFFSET_FILL);
+        glPolygonOffset(1.5f, 2.f);
+        for (int i = 0; i < 3; i++) {
+            shadows_.bindLayer(i);
+            depth_.use();
+            depth_.set("uViewProj", cascades_.viewProj[i]);
+            skinnedDepth_.use();
+            skinnedDepth_.set("uViewProj", cascades_.viewProj[i]);
+            depth_.use();
+            drawWorld(s, lit_, true);
+        }
+        glDisable(GL_POLYGON_OFFSET_FILL);
     }
 
-    // ---- goal frame
-    const vec3 white(1, 1, 1);
-    const float GW = static_cast<float>(sim::GOAL_HALF_WIDTH), GH = static_cast<float>(sim::GOAL_HEIGHT), GD = static_cast<float>(sim::GOAL_DEPTH);
-    for (float sx : {-1.f, 1.f}) {
-        lit_.draw(post_, glm::translate(mat4(1), vec3(sx * GW, GH / 2, 0)), white);
-        lit_.draw(stanchion_, glm::translate(mat4(1), vec3(sx * GW, GH, -GD / 2)) * glm::rotate(mat4(1), PI / 2, vec3(1, 0, 0)), vec3(0.87f));
-    }
-    lit_.draw(bar_, glm::translate(mat4(1), vec3(0, GH, 0)) * glm::rotate(mat4(1), PI / 2, vec3(0, 0, 1)), white);
+    // ---- HDR scene: sky, then PBR geometry
+    target_.bindHdr();
+    glClearColor(0, 0, 0, 1);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glDisable(GL_DEPTH_TEST);
+    sky_.use();
+    sky_.set("uInvViewProj", glm::inverse(viewProj_));
+    sky_.set("uCam", cam);
+    setSkyUniforms(sky_, look_);
+    fullscreen_.draw();
+    glEnable(GL_DEPTH_TEST);
 
-    // ---- players and ball
-    players_.draw(lit_, s);
-    lit_.draw(ballMesh_, glm::translate(mat4(1), ballPos_) * glm::mat4_cast(ballRot_), vec3(0.96f), 1.f, 1);
+    bindScene(cam);
+    lit_.shader = &pbr_;
+    lit_.skinned = &pbrSkinned_;
+    lit_.depthOnly = false;
+    drawWorld(s, lit_, false);
 
-    // ---- unlit: pitch lines, ball shadow, net, spray, aids
-    setCommon(unlitShader_);
+    // ---- resolve, tone map into the LDR target (which shares the scene depth)
+    target_.resolveHdr();
+    target_.bindLdr();
+    glDisable(GL_DEPTH_TEST);
+    glDepthMask(GL_FALSE);
+    tonemap_.use();
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, target_.resolveTex());
+    tonemap_.set("uHdr", 0);
+    tonemap_.set("uExposure", look_.exposure);
+    fullscreen_.draw();
+
+    // ---- world-space aids drawn after tone mapping, so their colours stay exact
+    unlitShader_.use();
+    unlitShader_.set("uViewProj", viewProj_);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glDepthMask(GL_FALSE);
-    unlit(pitchLines_, mat4(1), hex(0xf4f4f0), 1.f, true);
+    glEnable(GL_DEPTH_TEST);
 
     const float h = std::max(0.f, ballPos_.y - static_cast<float>(radius_));
     unlit(ballShadow_, glm::translate(mat4(1), vec3(ballPos_.x, 0.02f, ballPos_.z)) * glm::rotate(mat4(1), -PI / 2, vec3(1, 0, 0)) * glm::scale(mat4(1), vec3(1 + h * 0.15f)),
-          vec3(0), std::max(0.08f, 0.35f - h * 0.05f), true);
+          vec3(0), std::max(0.08f, 0.2f - h * 0.03f), true);
 
     unlitShader_.set("uModel", mat4(1));
     unlitShader_.set("uColor", glm::vec4(1, 1, 1, 0.55f));
-    glEnable(GL_DEPTH_TEST);
     net_.draw(GL_LINES);
 
     drawSpray(s);
@@ -346,8 +363,68 @@ void GameView::render(const sim::SimState& s, double alpha, double dt, int fbW, 
     drawRings(s, dt);
 
     glDepthMask(GL_TRUE);
-    glEnable(GL_DEPTH_TEST);
     glDisable(GL_BLEND);
+    glEnable(GL_DEPTH_TEST);
+    target_.presentTo(0);
+    gpuTimer_.end();
+}
+
+void GameView::bindLighting(const gfx::Shader& sh, const vec3& cam) {
+    sh.use();
+    sh.set("uViewProj", viewProj_);
+    sh.set("uCam", cam);
+    sh.set("uCamFwd", glm::normalize(rig.target() - cam));
+    sh.set("uSunDir", look_.sunDir);
+    sh.set("uSunE", look_.sunColor * look_.sunE);
+    sh.set("uIblScale", look_.iblScale);
+    sh.set("uFogColor", look_.fog);
+    sh.set("uFog", glm::vec2(look_.fogNear, look_.fogFar));
+    sh.set("uPrefMaxLod", static_cast<float>(ibl_->prefilterMips() - 1));
+    const bool shadowsOn = shadows_.size() > 0;
+    sh.set("uShadowOn", shadowsOn ? 1 : 0);
+    sh.set("uPcf", quality_ == Quality::High ? 1 : 0);
+    if (shadowsOn) {
+        sh.setArray("uShadowMat", cascades_.viewProj, 3);
+        sh.set("uSplits", cascades_.splits);
+        sh.set("uTexel", cascades_.texel);
+    }
+    sh.set("uShadow", 0);
+    sh.set("uIrr", 1);
+    sh.set("uPref", 2);
+    sh.set("uBrdf", 3);
+}
+
+void GameView::bindScene(const vec3& cam) {
+    bindLighting(pbrSkinned_, cam);
+    bindLighting(pbr_, cam);  // leaves the static program active
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, shadows_.tex());
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, ibl_->irradiance().tex());
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, ibl_->prefiltered().tex());
+    glActiveTexture(GL_TEXTURE3);
+    glBindTexture(GL_TEXTURE_2D, ibl_->brdf().tex());
+    glActiveTexture(GL_TEXTURE0);
+}
+
+ScreenPoint GameView::project(const vec3& w) const {
+    const glm::vec4 c = viewProj_ * glm::vec4(w, 1);
+    if (c.w <= 0.01f) return {{0, 0}, false};
+    const glm::vec3 n = glm::vec3(c) / c.w;
+    return {{(n.x * 0.5f + 0.5f) * fbW_, (1 - (n.y * 0.5f + 0.5f)) * fbH_}, std::fabs(n.x) < 1.2f && std::fabs(n.y) < 1.2f};
+}
+
+std::optional<glm::vec2> GameView::pickGround(double nx, double ny) const {
+    const glm::vec4 a = glm::inverse(viewProj_) * glm::vec4(static_cast<float>(nx * 2 - 1), static_cast<float>(1 - ny * 2), -1, 1);
+    const glm::vec4 b = glm::inverse(viewProj_) * glm::vec4(static_cast<float>(nx * 2 - 1), static_cast<float>(1 - ny * 2), 1, 1);
+    const vec3 p0 = vec3(a) / a.w, p1 = vec3(b) / b.w;
+    const vec3 dir = p1 - p0;
+    if (std::fabs(dir.y) < 1e-6f) return std::nullopt;
+    const float t = -p0.y / dir.y;
+    if (t < 0) return std::nullopt;
+    const vec3 hit = p0 + dir * t;
+    return glm::vec2(hit.x, hit.z);
 }
 
 void GameView::drawSpray(const sim::SimState& s) {

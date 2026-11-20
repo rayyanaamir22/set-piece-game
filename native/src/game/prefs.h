@@ -11,7 +11,7 @@
 
 namespace game {
 
-enum class Quality { Low, Medium, High };
+using Quality = render::Quality;
 inline constexpr double REPLAY_SPEEDS[3] = {0.25, 0.5, 1};
 
 // Everything that is about *your* setup rather than the rules of the free kick.

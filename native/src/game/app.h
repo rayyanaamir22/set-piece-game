@@ -21,6 +21,10 @@ struct Options {
     int frames = 0;
     bool demoShoot = false;
     std::string openSheet;  // "settings" | "controls": start with that sheet open (screenshots)
+    std::optional<std::pair<double, double>> demoAim;  // --aim X Y: set the reticle at start (screenshots)
+    std::optional<std::pair<double, double>> demoContact;  // --contact X Y: contact point while shooting (screenshots)
+    std::string debugCam;  // "taker" | "keeper"
+    int bench = 0;  // run N frames with vsync off and print frame-time statistics
     std::string prefsOverride;  // use this prefs file instead of the user's
 };
 
@@ -63,6 +67,9 @@ private:
     uint64_t last_ = 0;
     double smoothDt_ = 1.0 / 60;
     bool running_ = true;
+    bool showStats_ = false;
+    std::vector<double> frameTimes_;
+    double gpuSum_ = 0;
 };
 
 }  // namespace game

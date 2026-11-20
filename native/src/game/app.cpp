@@ -38,7 +38,7 @@ App::App(const Options& opts)
     ImGui_ImplSDL3_InitForOpenGL(window_.handle(), window_.context());
     ImGui_ImplOpenGL3_Init("#version 410 core");
 
-    view_ = std::make_unique<render::GameView>(cfg_->physics.radius);
+    view_ = std::make_unique<render::GameView>(cfg_->physics.radius, SETPIECE_SHADER_DIR);
 
     // ---- preferences
     prefsPath_ = opts.prefsOverride.empty() ? prefsPath() : opts.prefsOverride;
@@ -90,6 +90,9 @@ App::App(const Options& opts)
     };
 
     applyClientPrefs();
+    if (opts.bench > 0) window_.setVsync(false);
+    view_->setDebugCamera(opts.debugCam);
+    if (opts.demoAim) sim_.aim = {opts.demoAim->first, opts.demoAim->second};
     if (opts.openSheet == "settings") sheets_.open = Sheet::Settings;
     if (opts.openSheet == "controls") sheets_.open = Sheet::Controls;
     last_ = SDL_GetPerformanceCounter();
@@ -103,6 +106,7 @@ App::~App() {
 
 void App::applyClientPrefs() {
     const ClientPrefs& c = prefs_.client;
+    view_->setQuality(c.quality);
     view_->setTimeOfDay(c.timeOfDay);
     view_->rig.distanceMul = c.cameraDistance;
     input_.keymap = c.keymap;
@@ -197,7 +201,6 @@ void App::screenshot(const std::string& path) {
 }
 
 int App::run() {
-    ImGuiIO& io = ImGui::GetIO();
     while (running_) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
@@ -210,6 +213,10 @@ int App::run() {
                     if (!code.empty()) sheets_.keyPressed(ctx_, std::string(code));
                     continue;  // never reaches the game
                 }
+                if (e.key.scancode == SDL_SCANCODE_F3) {
+                    showStats_ = !showStats_;
+                    continue;
+                }
                 if (e.key.scancode == SDL_SCANCODE_ESCAPE && sheets_.open != Sheet::None) {
                     sheets_.open = Sheet::None;
                     continue;
@@ -217,7 +224,7 @@ int App::run() {
             }
             // Mouse clicks on the UI must not capture the pointer or shoot.
             const bool mouseEvt = e.type == SDL_EVENT_MOUSE_BUTTON_DOWN || e.type == SDL_EVENT_MOUSE_BUTTON_UP || e.type == SDL_EVENT_MOUSE_MOTION;
-            if (mouseEvt && io.WantCaptureMouse && !input_.mouseLocked()) continue;
+            if (mouseEvt && ImGui::GetIO().WantCaptureMouse && !input_.mouseLocked()) continue;
             input_.handleEvent(e, window_.handle());
         }
 
@@ -225,12 +232,30 @@ int App::run() {
         const double dt = std::min(MAX_FRAME, static_cast<double>(now - last_) / static_cast<double>(SDL_GetPerformanceFrequency()));
         last_ = now;
         frame(dt);
+        if (opts_.bench > 0) {
+            frameTimes_.push_back(dt * 1000);
+            gpuSum_ += view_->gpuMs();
+            if (static_cast<int>(frameTimes_.size()) >= opts_.bench) running_ = false;
+        }
         if (opts_.frames > 0 && frameNo_ >= opts_.frames) running_ = false;
+    }
+    if (opts_.bench > 0 && frameTimes_.size() > 10) {
+        // Skip the first frames (shader warm-up, IBL bake).
+        std::vector<double> t(frameTimes_.begin() + 5, frameTimes_.end());
+        std::sort(t.begin(), t.end());
+        double sum = 0;
+        for (double v : t) sum += v;
+        int w, h;
+        window_.drawableSize(w, h);
+        std::printf("bench: %dx%d  quality=%s  msaa=%d  shadows=%s\n", w, h, qualityName(prefs_.client.quality), view_->msaaSamples(), view_->shadowsOn() ? "on" : "off");
+        std::printf("bench: %zu frames  avg %.2f ms (%.0f fps)  p50 %.2f  p99 %.2f  max %.2f  | gpu avg %.2f ms\n", t.size(), sum / t.size(), 1000.0 * t.size() / sum,
+                    t[t.size() / 2], t[static_cast<size_t>(t.size() * 0.99)], t.back(), gpuSum_ / frameTimes_.size());
     }
     return 0;
 }
 
 void App::frame(double frameDt) {
+    ImGuiIO& io = ImGui::GetIO();
     ++frameNo_;
     smoothDt_ += (frameDt - smoothDt_) * 0.05;
 
@@ -239,6 +264,10 @@ void App::frame(double frameDt) {
         if (opts_.demoShoot) {
             // Scripted shot for screenshots: wait, hold shoot until the meter reaches the sweet spot, release.
             if (demoState_ == 0 && frameNo_ > 20) demoState_ = 1;
+            if (demoState_ >= 1 && opts_.demoContact) {
+                polled.input.contactX = opts_.demoContact->first;
+                polled.input.contactY = opts_.demoContact->second;
+            }
             if (demoState_ == 1) {
                 polled.input.shoot = true;
                 if (sim_.phase == sim::Phase::Charge && sim_.meter >= (cfg_->shot.sweetMin + cfg_->shot.sweetMax) / 2) demoState_ = 2;
@@ -282,6 +311,16 @@ void App::frame(double frameDt) {
         paused_ = nowPaused;
         input_.setEnabled(window_.handle(), !paused_);
         if (paused_) setPlacing(false);
+    }
+    if (showStats_) {
+        char buf[160];
+        std::snprintf(buf, sizeof buf, "%.0f fps  %.2f ms | gpu %.2f ms | %dx%d  %dx MSAA  shadows %s", 1.0 / smoothDt_, smoothDt_ * 1000, view_->gpuMs(), fbW, fbH, view_->msaaSamples(),
+                      view_->shadowsOn() ? "on" : "off");
+        ImDrawList* dl = ImGui::GetBackgroundDrawList();
+        const ImVec2 sz = ImGui::CalcTextSize(buf);
+        const ImVec2 p(io.DisplaySize.x - sz.x - 22, 70);
+        dl->AddRectFilled(ImVec2(p.x - 8, p.y - 4), ImVec2(p.x + sz.x + 8, p.y + sz.y + 4), IM_COL32(0, 0, 0, 150), 6);
+        dl->AddText(p, IM_COL32(255, 255, 255, 230), buf);
     }
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());

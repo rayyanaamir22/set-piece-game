@@ -43,7 +43,7 @@ void CameraRig::update(const sim::SimState& s, const glm::vec3& ballPos, double 
     lookAt_ += (wantLook - lookAt_) * kLook;
 }
 
-glm::mat4 CameraRig::view() const { return glm::lookAt(pos_, lookAt_, glm::vec3(0, 1, 0)); }
+glm::mat4 CameraRig::view() const { return glm::lookAt(position(), target(), glm::vec3(0, 1, 0)); }
 glm::mat4 CameraRig::projection(float aspect) const { return glm::perspective(glm::radians(FOV_DEG), aspect, NEAR, FAR); }
 
 }  // namespace render
