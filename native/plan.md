@@ -104,36 +104,41 @@ native/
 - `npm run contract` writes `docs/porting-contract.md`, generated from the TypeScript: every state/input structure, the exact `step` order, the RNG, the driver procedure and the tolerances. A test fails if it is stale.
 - Still to do: set up Git LFS for `assets/` when the first binary assets arrive.
 
-**B1. Platform shell**
+**B1. Platform shell: done**
 - CMake project with an SDL3 window, a GL 4.1 core context and ImGui.
 - Fixed 240 Hz sim loop with render interpolation.
 - Input mapping identical to the web build: keyboard, and gamepads via SDL's mapping database.
 - CI builds on macOS, Windows and Linux.
 - Exit: an empty scene runs at the display refresh rate, and input events show in the ImGui overlay.
 
-**B2. Sim port and parity**
+**B2. Sim port and parity: done**
 - Port every `src/sim` module and load `data/*.json`.
 - The golden runner replays each fixture through `sim::step` and compares with the recorded states.
 - Port the pure Vitest unit tests to doctest.
 - Exit: all goldens pass in CI (ball position within 1 cm for the whole flight, identical results and RNG state), and the ported unit tests pass.
+- Done: `native/src/sim` ports every module (JS-compatible `Math.hypot`/`min`/`max`/`round`/`sign`; `-ffp-contract=off` so the compiler cannot fuse multiply-adds). `native/tests/golden_driver.cpp` replays `tests/golden/*.json` with the contract's tolerances; the unit tests are ported to doctest (`unit_*.cpp`). Not ported because they test web-only code: `input`, `replay`, `contract`.
 
-**B3. Graybox and feature parity**
+**B3. Graybox and feature parity: done**
 - Pitch, markings, goal frame, capsule players, ball, reticle, aim arrow, run-up marker and path aid.
 - HUD: distance, run-up and wind readouts, power meter, contact widget, result toasts.
 - Controls and Settings screens with every web setting, saved to a prefs file.
 - Exit: the native build plays exactly like the web build. A side-by-side playtest from the same seed gives the same outcomes.
+- Done: `src/render` (graybox scene: striped pitch and markings, goal and rippling net, capsule players for taker/decoy/wall/lying man/keeper, spinning ball, reticle, aim arrow, run-up marker, predicted path, spray, challenge rings, camera rig), `src/game` (app loop, HUD, Settings and Controls sheets with key rebinding, prefs JSON in the user dir, challenge medals/bests, practice click-to-place). Settings that depend on later milestones (audio, quality, replay) are shown disabled with a "[later milestone]" tag. 4x MSAA is already on. The game runs the same sim as the web build, so same-seed outcomes follow from the B2 goldens. Developer flags: `--seed N`, `--prefs FILE`, `--frames N --shot out.png [--demo-shoot] [--open settings|controls]`.
 
-**B4. Lighting and materials**
+**B4. Lighting and materials: done**
 - PBR shader, IBL (pre-filtered environment and BRDF lookup baked at load), 3-cascade shadow maps.
 - HDR targets with ACES tone mapping, 4x MSAA, and day/dusk/night presets.
-- Exit: the graybox scene in PBR stays at 60 fps on an M1 MacBook Air at 1080p "high".
+- Exit: the graybox scene in PBR stays at 60 fps at 1080p "high" on the reference Apple Silicon machine (measured on an M2; the M1 Air is not required).
+- Done: GLSL 410 shaders live in `native/shaders/` and hot-reload while the game runs. Cook-Torrance GGX PBR; a procedural HDR sky (day / dusk / night) baked at load into a diffuse irradiance cube, a GGX pre-filtered specular cube (5 roughness mips) and the BRDF lookup, re-baked when the time of day changes; 3 cascaded shadow maps (12 / 35 / 100 m, texel-snapped, normal-offset bias, 3x3 PCF on High); an RGBA16F MSAA scene target, ACES tone mapping, and the world-space aids drawn after tone mapping into an MSAA target that shares the scene depth. Quality: Low = no shadows + 2x MSAA, Medium = 1K shadows, High = 2K soft shadows (4x MSAA on Medium and High). F3 shows an fps / CPU / GPU-time overlay; `--bench N` prints frame-time statistics with vsync off.
+- Measured on an Apple M2 at 2560x1440, High: 8.8 ms average (114 fps), 6.6 ms GPU; Medium 8.3 ms; Low 5.6 ms.
 
-**B5. Characters and animation**
+**B5. Characters and animation: done**
 - glTF skinning (GPU, ≤ 64 bones), clip playback and blending, run-up / strike / follow-through.
 - Strike IK aligned to the launch tick, and plant-foot IK.
 - Keeper clips mapped onto the sim capsule (blend chosen by dive height and side; get-up after the sink).
 - Wall jump, lying man and encroacher run.
 - Exit: every sim outcome has a believable animation, and the visible keeper's hands stay within 10 cm of the sim's hand point during saves.
+- Done (content note): no redistributable animated glTF characters could be fetched non-interactively (Mixamo needs a login), so the character is generated procedurally (`anim/character_mesh.cpp`: 18-bone humanoid, tube limbs with smooth joint weights, 6 material slots for kits) and its clips are procedural poses. The pipeline is the real one (GPU skinning with a 24-bone matrix palette, forward kinematics, two-bone IK, slerp blending, crossfades); swapping in glTF art later means loading a mesh and clips into the same `Skeleton` / `Pose` types. Taker: idle, distance-driven run cycle, wind-up, strike with IK that puts the boot on the ball at the launch tick, planted foot pinned (no sliding), follow-through, then celebration or head-in-hands. Keeper: body follows the sim capsule (feet `a`, hands `b`), both hands IK'd to `b` (worst error 6 cm over dives to every corner), arms-out ready stance matching the arm hitbox, catch / parry reactions, rise from kneeling for the next attempt. Wall: cupped hands, crouch then leap with the sim's lift, encroachers run, lying man face down along the sim capsule. Debug flags: `--aim X Y`, `--contact X Y`, `--debug-cam taker|keeper`.
 
 **B6. Net cloth, grass and ball**
 - Net as a CPU mass-spring cloth (Verlet, about 2.5k particles, pinned at the frame, collides with the ball sphere). It reacts to the sim's net events, while the ball itself stays controlled by the sim's net box.
